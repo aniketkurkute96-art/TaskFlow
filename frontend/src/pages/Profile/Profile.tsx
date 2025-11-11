@@ -25,7 +25,7 @@ import {
   Business as BusinessIcon,
   Assignment as AssignmentIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { useSnackbar } from 'notistack';
 import { format } from 'date-fns';
 import { apiService } from '../../services/api';
@@ -43,15 +43,18 @@ const Profile: React.FC = () => {
     email: '',
   });
 
-  const { data: profile, isLoading, error } = useQuery({
+  const { data: profileResponse, isLoading, error } = useQuery({
     queryKey: ['profile'],
     queryFn: apiService.getProfile,
   });
 
-  const { data: userTasks } = useQuery({
+  const { data: userTasksResponse } = useQuery({
     queryKey: ['user-tasks'],
     queryFn: apiService.getUserTasks,
   });
+
+  const profile = profileResponse?.data?.user;
+  const userTasks = userTasksResponse?.data;
 
   const updateProfileMutation = useMutation({
     mutationFn: (data: { name: string; email: string }) => apiService.updateProfile(data),
@@ -138,8 +141,8 @@ const Profile: React.FC = () => {
                     <Button
                       variant="contained"
                       startIcon={<SaveIcon />}
-                      onClick={handleSave}
-                      disabled={updateProfileMutation.isPending}
+                    onClick={handleSave}
+                    disabled={updateProfileMutation.isLoading}
                     >
                       Save
                     </Button>

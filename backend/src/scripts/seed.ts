@@ -1,253 +1,171 @@
-import { AppDataSource } from '../database';
-import { User, UserRole } from '../models/User';
-import { Department } from '../models/Department';
-import { ApprovalTemplate } from '../models/ApprovalTemplate';
-import { ApprovalTemplateStage } from '../models/ApprovalTemplateStage';
-import { ApproverType, DynamicRole } from '../types/approvalTemplate';
+import { PrismaClient } from '@prisma/client';
 
-async function seedDatabase() {
-  try {
-    console.log('🌱 Starting database seeding...');
-    
-    await AppDataSource.initialize();
-    console.log('✅ Database connected');
+const prisma = new PrismaClient();
 
-    // Clear existing data
-    console.log('🧹 Clearing existing data...');
-    await AppDataSource.getRepository(ApprovalTemplateStage).delete({});
-    await AppDataSource.getRepository(ApprovalTemplate).delete({});
-    await AppDataSource.getRepository(User).delete({});
-    await AppDataSource.getRepository(Department).delete({});
+// NOTE: In production, replace plaintext 'password' with bcrypt.hash('password', 10)
+// For prototype, we're using plaintext 'password' for all seeded users
 
-    // Create departments
-    console.log('🏢 Creating departments...');
-    const departmentRepository = AppDataSource.getRepository(Department);
-    
-    const hrDepartment = departmentRepository.create({
-      name: 'Human Resources',
-      description: 'Human Resources Department'
-    });
-    
-    const financeDepartment = departmentRepository.create({
-      name: 'Finance',
-      description: 'Finance Department'
-    });
-    
-    const itDepartment = departmentRepository.create({
-      name: 'IT',
-      description: 'Information Technology Department'
-    });
-    
-    const operationsDepartment = departmentRepository.create({
+async function main() {
+  console.log('🌱 Starting database seed...');
+
+  // Clear existing data (optional - comment out if you want to preserve data)
+  console.log('Clearing existing data...');
+  await prisma.taskApprover.deleteMany();
+  await prisma.taskNode.deleteMany();
+  await prisma.comment.deleteMany();
+  await prisma.attachment.deleteMany();
+  await prisma.checklistItem.deleteMany();
+  await prisma.task.deleteMany();
+  await prisma.approvalTemplateStage.deleteMany();
+  await prisma.approvalTemplate.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.department.deleteMany();
+
+  // Create Departments
+  console.log('Creating departments...');
+  const operationsDept = await prisma.department.create({
+    data: {
       name: 'Operations',
-      description: 'Operations Department'
-    });
+    },
+  });
 
-    await departmentRepository.save([hrDepartment, financeDepartment, itDepartment, operationsDepartment]);
-    console.log('✅ Departments created');
+  const accountsDept = await prisma.department.create({
+    data: {
+      name: 'Accounts',
+    },
+  });
 
-    // Create users
-    console.log('👥 Creating users...');
-    const userRepository = AppDataSource.getRepository(User);
-    
-    const adminUser = userRepository.create({
-      email: 'admin@taskflow.com',
-      name: 'System Administrator',
-      password: 'admin123', // Note: Plain text for prototype - add bcrypt hashing for production
-      role: UserRole.ADMIN,
-      active: true
-    });
-    
-    const hrManager = userRepository.create({
-      email: 'hr.manager@taskflow.com',
-      name: 'HR Manager',
-      password: 'hr123',
-      role: UserRole.HOD,
-      departmentId: hrDepartment.id,
-      active: true
-    });
-    
-    const financeManager = userRepository.create({
-      email: 'finance.manager@taskflow.com',
-      name: 'Finance Manager',
-      password: 'finance123',
-      role: UserRole.HOD,
-      departmentId: financeDepartment.id,
-      active: true
-    });
-    
-    const cfo = userRepository.create({
-      email: 'cfo@taskflow.com',
+  const financeDept = await prisma.department.create({
+    data: {
+      name: 'Finance',
+    },
+  });
+
+  // Create Users
+  console.log('Creating users...');
+  const admin = await prisma.user.create({
+    data: {
+      name: 'Admin User',
+      email: 'admin@example.com',
+      password: 'password', // Plaintext for prototype - use bcrypt in production
+      role: 'admin',
+      active: true,
+    },
+  });
+
+  const creator = await prisma.user.create({
+    data: {
+      name: 'Task Creator',
+      email: 'creator@example.com',
+      password: 'password', // Plaintext for prototype
+      role: 'creator',
+      departmentId: operationsDept.id,
+      active: true,
+    },
+  });
+
+  const hod = await prisma.user.create({
+    data: {
+      name: 'Head of Department',
+      email: 'hod@example.com',
+      password: 'password', // Plaintext for prototype
+      role: 'hod',
+      departmentId: accountsDept.id,
+      active: true,
+    },
+  });
+
+  const cfo = await prisma.user.create({
+    data: {
       name: 'Chief Financial Officer',
-      password: 'cfo123',
-      role: UserRole.CFO,
-      departmentId: financeDepartment.id,
-      active: true
-    });
-    
-    const itManager = userRepository.create({
-      email: 'it.manager@taskflow.com',
-      name: 'IT Manager',
-      password: 'it123',
-      role: UserRole.HOD,
-      departmentId: itDepartment.id,
-      active: true
-    });
-    
-    const operationsManager = userRepository.create({
-      email: 'operations.manager@taskflow.com',
-      name: 'Operations Manager',
-      password: 'ops123',
-      role: UserRole.HOD,
-      departmentId: operationsDepartment.id,
-      active: true
-    });
-    
-    const hrEmployee = userRepository.create({
-      email: 'hr.employee@taskflow.com',
-      name: 'HR Employee',
-      password: 'employee123',
-      role: UserRole.USER,
-      departmentId: hrDepartment.id,
-      active: true
-    });
-    
-    const financeEmployee = userRepository.create({
-      email: 'finance.employee@taskflow.com',
-      name: 'Finance Employee',
-      password: 'employee123',
-      role: UserRole.USER,
-      departmentId: financeDepartment.id,
-      active: true
-    });
-    
-    const itEmployee = userRepository.create({
-      email: 'it.employee@taskflow.com',
-      name: 'IT Employee',
-      password: 'employee123',
-      role: UserRole.USER,
-      departmentId: itDepartment.id,
-      active: true
-    });
+      email: 'cfo@example.com',
+      password: 'password', // Plaintext for prototype
+      role: 'cfo',
+      departmentId: financeDept.id,
+      active: true,
+    },
+  });
 
-    await userRepository.save([
-      adminUser, hrManager, financeManager, cfo, itManager, operationsManager,
-      hrEmployee, financeEmployee, itEmployee
-    ]);
-    console.log('✅ Users created');
+  const assignee = await prisma.user.create({
+    data: {
+      name: 'Task Assignee',
+      email: 'assignee@example.com',
+      password: 'password', // Plaintext for prototype
+      role: 'assignee',
+      departmentId: operationsDept.id,
+      active: true,
+    },
+  });
 
-    // Create approval templates
-    console.log('📋 Creating approval templates...');
-    const approvalTemplateRepository = AppDataSource.getRepository(ApprovalTemplate);
-    const approvalTemplateStageRepository = AppDataSource.getRepository(ApprovalTemplateStage);
-    
-    // Simple approval template (1 level)
-    const simpleApprovalTemplate = approvalTemplateRepository.create({
-      name: 'Simple Approval',
-      description: 'Single level approval for routine tasks',
-      active: true
-    });
-    
-    // Financial approval template (2 levels)
-    const financialApprovalTemplate = approvalTemplateRepository.create({
-      name: 'Financial Approval',
-      description: 'Two-level approval for financial tasks',
-      minAmount: 1000,
-      maxAmount: 50000,
-      departmentIds: [financeDepartment.id],
-      active: true
-    });
-    
-    // High-value approval template (3 levels)
-    const highValueApprovalTemplate = approvalTemplateRepository.create({
-      name: 'High-Value Approval',
-      description: 'Three-level approval for high-value tasks',
-      minAmount: 50000,
-      active: true
-    });
+  // Create Approval Templates
+  console.log('Creating approval templates...');
 
-    await approvalTemplateRepository.save([
-      simpleApprovalTemplate, 
-      financialApprovalTemplate, 
-      highValueApprovalTemplate
-    ]);
+  // Template 1: Vendor Bill Approval for Accounts (amount >= 100000)
+  const vendorBillTemplate = await prisma.approvalTemplate.create({
+    data: {
+      name: 'Vendor Bill Approval',
+      conditionJson: JSON.stringify({
+        department: 'Accounts',
+        amount_min: 100000,
+      }),
+      isActive: true,
+      stages: {
+        create: [
+          {
+            levelOrder: 1,
+            approverType: 'dynamic_role',
+            approverValue: 'HOD',
+            conditionJson: '{}',
+          },
+          {
+            levelOrder: 2,
+            approverType: 'dynamic_role',
+            approverValue: 'CFO',
+            conditionJson: '{}',
+          },
+        ],
+      },
+    },
+  });
 
-    // Create approval template stages
-    const simpleStage = approvalTemplateStageRepository.create({
-      templateId: simpleApprovalTemplate.id,
-      level: 1,
-      approverType: ApproverType.DYNAMIC_ROLE,
-      approverValue: DynamicRole.HOD
-    });
-    
-    const financialStage1 = approvalTemplateStageRepository.create({
-      templateId: financialApprovalTemplate.id,
-      level: 1,
-      approverType: ApproverType.DYNAMIC_ROLE,
-      approverValue: DynamicRole.HOD
-    });
-    
-    const financialStage2 = approvalTemplateStageRepository.create({
-      templateId: financialApprovalTemplate.id,
-      level: 2,
-      approverType: ApproverType.DYNAMIC_ROLE,
-      approverValue: DynamicRole.CFO
-    });
-    
-    const highValueStage1 = approvalTemplateStageRepository.create({
-      templateId: highValueApprovalTemplate.id,
-      level: 1,
-      approverType: ApproverType.DYNAMIC_ROLE,
-      approverValue: DynamicRole.HOD
-    });
-    
-    const highValueStage2 = approvalTemplateStageRepository.create({
-      templateId: highValueApprovalTemplate.id,
-      level: 2,
-      approverType: ApproverType.DYNAMIC_ROLE,
-      approverValue: DynamicRole.CFO
-    });
-    
-    const highValueStage3 = approvalTemplateStageRepository.create({
-      templateId: highValueApprovalTemplate.id,
-      level: 3,
-      approverType: ApproverType.USER,
-      approverValue: adminUser.id // Admin as final approver for high-value tasks
-    });
+  // Template 2: General Expense Approval (amount >= 50000)
+  const expenseTemplate = await prisma.approvalTemplate.create({
+    data: {
+      name: 'General Expense Approval',
+      conditionJson: JSON.stringify({
+        amount_min: 50000,
+      }),
+      isActive: true,
+      stages: {
+        create: [
+          {
+            levelOrder: 1,
+            approverType: 'dynamic_role',
+            approverValue: 'HOD',
+            conditionJson: '{}',
+          },
+        ],
+      },
+    },
+  });
 
-    await approvalTemplateStageRepository.save([
-      simpleStage, financialStage1, financialStage2, 
-      highValueStage1, highValueStage2, highValueStage3
-    ]);
-    console.log('✅ Approval templates created');
-
-    console.log('🎉 Database seeding completed successfully!');
-    console.log('');
-    console.log('👤 Sample Users:');
-    console.log('  - admin@taskflow.com (password: admin123) - System Administrator');
-    console.log('  - hr.manager@taskflow.com (password: hr123) - HR Manager');
-    console.log('  - finance.manager@taskflow.com (password: finance123) - Finance Manager');
-    console.log('  - cfo@taskflow.com (password: cfo123) - CFO');
-    console.log('  - it.manager@taskflow.com (password: it123) - IT Manager');
-    console.log('  - operations.manager@taskflow.com (password: ops123) - Operations Manager');
-    console.log('  - hr.employee@taskflow.com (password: employee123) - HR Employee');
-    console.log('  - finance.employee@taskflow.com (password: employee123) - Finance Employee');
-    console.log('  - it.employee@taskflow.com (password: employee123) - IT Employee');
-    console.log('');
-    console.log('🏢 Departments: HR, Finance, IT, Operations');
-    console.log('📋 Approval Templates: Simple, Financial, High-Value');
-
-  } catch (error) {
-    console.error('❌ Database seeding failed:', error);
-  } finally {
-    await AppDataSource.destroy();
-    console.log('🔌 Database connection closed');
-  }
+  console.log('✅ Seed completed successfully!');
+  console.log('\n📋 Seeded Users:');
+  console.log('  - admin@example.com (password: password)');
+  console.log('  - creator@example.com (password: password)');
+  console.log('  - hod@example.com (password: password)');
+  console.log('  - cfo@example.com (password: password)');
+  console.log('  - assignee@example.com (password: password)');
+  console.log('\n📋 Seeded Templates:');
+  console.log(`  - ${vendorBillTemplate.name} (Accounts, amount >= 100000)`);
+  console.log(`  - ${expenseTemplate.name} (amount >= 50000)`);
 }
 
-// Run seeder if this file is executed directly
-if (require.main === module) {
-  seedDatabase();
-}
-
-export { seedDatabase };
+main()
+  .catch((e) => {
+    console.error('❌ Seed failed:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

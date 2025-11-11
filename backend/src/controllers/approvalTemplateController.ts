@@ -1,243 +1,186 @@
-import { AppDataSource } from '../database';
-import { ApprovalTemplate } from '../models/ApprovalTemplate';
-import { ApprovalTemplateStage } from '../models/ApprovalTemplateStage';
-import { AuthRequest } from '../middleware/auth';
 import { Response } from 'express';
-import { ApproverType, DynamicRole } from '../types/approvalTemplate';
+import { AuthRequest } from '../middleware/auth';
+import prisma from '../database';
 
-const approvalTemplateRepository = AppDataSource.getRepository(ApprovalTemplate);
-const approvalTemplateStageRepository = AppDataSource.getRepository(ApprovalTemplateStage);
-
-// Get all approval templates
-export const getAllTemplates = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getTemplates = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const templates = await approvalTemplateRepository.find({
-      relations: ['stages'],
-      order: { name: 'ASC' }
+    const templates = await prisma.approvalTemplate.findMany({
+      include: {
+        stages: { orderBy: { levelOrder: 'asc' } },
+        _count: { select: { tasks: true } },
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
-    res.json({ templates });
-  } catch (error) {
-    console.error('Get all templates error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.json(templates);
+  } catch (error: any) {
+    console.error('Get templates error:', error);
+    res.status(500).json({ error: 'Failed to fetch templates' });
   }
 };
 
-// Get approval template by ID
 export const getTemplateById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    
-    const template = await approvalTemplateRepository.findOne({
+
+    const template = await prisma.approvalTemplate.findUnique({
       where: { id },
-      relations: ['stages']
+      include: {
+        stages: { orderBy: { levelOrder: 'asc' } },
+      },
     });
 
     if (!template) {
-      res.status(404).json({ error: 'Approval template not found' });
+      res.status(404).json({ error: 'Template not found' });
       return;
     }
 
-    res.json({ template });
-  } catch (error) {
-    console.error('Get template by ID error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.json(template);
+  } catch (error: any) {
+    console.error('Get template error:', error);
+    res.status(500).json({ error: 'Failed to fetch template' });
   }
 };
 
-// Create new approval template
 export const createTemplate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { name, description, minAmount, maxAmount, departmentIds, roles, stages, active } = req.body;
+    const { name, conditionJson, isActive, stages } = req.body;
 
-    // Validate required fields
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
       return;
     }
 
-    if (!stages || !Array.isArray(stages) || stages.length === 0) {
-      res.status(400).json({ error: 'At least one approval stage is required' });
-      return;
-    }
-
-    // Validate stages
-    for (const stage of stages) {
-      if (!stage.level || !stage.approverType) {
-        res.status(400).json({ error: 'Each stage must have level and approverType' });
-        return;
-      }
-
-      if (!Object.values(ApproverType).includes(stage.approverType)) {
-        res.status(400).json({ error: `Invalid approver type: ${stage.approverType}` });
-        return;
-      }
-
-      if (stage.approverType === ApproverType.DYNAMIC_ROLE && !Object.values(DynamicRole).includes(stage.approverValue)) {
-        res.status(400).json({ error: `Invalid dynamic role: ${stage.approverValue}` });
+    // Validate conditionJson
+    let parsedConditionJson = {};
+    if (conditionJson) {
+      try {
+        parsedConditionJson =
+          typeof conditionJson === 'string' ? JSON.parse(conditionJson) : conditionJson;
+      } catch {
+        res.status(400).json({ error: 'Invalid conditionJson format' });
         return;
       }
     }
 
-    // Create template
-    const template = approvalTemplateRepository.create({
-      name,
-      description: description || '',
-      minAmount: minAmount || null,
-      maxAmount: maxAmount || null,
-      departmentIds: departmentIds || [],
-      roles: roles || [],
-      active: active !== undefined ? active : true
+    // Create template with stages
+    const template = await prisma.approvalTemplate.create({
+      data: {
+        name,
+        conditionJson: JSON.stringify(parsedConditionJson),
+        isActive: isActive !== undefined ? isActive : true,
+        stages: {
+          create: (stages || []).map((stage: any) => ({
+            levelOrder: stage.levelOrder,
+            approverType: stage.approverType,
+            approverValue: stage.approverValue,
+            conditionJson: stage.conditionJson
+              ? JSON.stringify(
+                  typeof stage.conditionJson === 'string'
+                    ? JSON.parse(stage.conditionJson)
+                    : stage.conditionJson
+                )
+              : '{}',
+          })),
+        },
+      },
+      include: {
+        stages: { orderBy: { levelOrder: 'asc' } },
+      },
     });
 
-    const savedTemplate = await approvalTemplateRepository.save(template);
-
-    // Create stages
-    const templateStages: ApprovalTemplateStage[] = [];
-    
-    for (const stage of stages) {
-      const templateStage = approvalTemplateStageRepository.create({
-        templateId: savedTemplate.id,
-        level: stage.level,
-        approverType: stage.approverType,
-        approverValue: stage.approverValue || '',
-        conditionalLogic: stage.conditionalLogic || null
-      });
-      templateStages.push(templateStage);
-    }
-
-    await approvalTemplateStageRepository.save(templateStages);
-
-    // Reload template with stages
-    const templateWithStages = await approvalTemplateRepository.findOne({
-      where: { id: savedTemplate.id },
-      relations: ['stages']
-    });
-
-    res.status(201).json({
-      message: 'Approval template created successfully',
-      template: templateWithStages
-    });
-  } catch (error) {
+    res.status(201).json(template);
+  } catch (error: any) {
     console.error('Create template error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create template' });
   }
 };
 
-// Update approval template
 export const updateTemplate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, description, minAmount, maxAmount, departmentIds, roles, stages, active } = req.body;
+    const { name, conditionJson, isActive, stages } = req.body;
 
-    const template = await approvalTemplateRepository.findOne({
-      where: { id },
-      relations: ['stages']
-    });
-
-    if (!template) {
-      res.status(404).json({ error: 'Approval template not found' });
-      return;
-    }
-
-    // Validate stages if provided
-    if (stages && Array.isArray(stages)) {
-      if (stages.length === 0) {
-        res.status(400).json({ error: 'At least one approval stage is required' });
+    // Validate conditionJson if provided
+    let parsedConditionJson = undefined;
+    if (conditionJson !== undefined) {
+      try {
+        parsedConditionJson =
+          typeof conditionJson === 'string' ? JSON.parse(conditionJson) : conditionJson;
+      } catch {
+        res.status(400).json({ error: 'Invalid conditionJson format' });
         return;
       }
-
-      for (const stage of stages) {
-        if (!stage.level || !stage.approverType) {
-          res.status(400).json({ error: 'Each stage must have level and approverType' });
-          return;
-        }
-
-        if (!Object.values(ApproverType).includes(stage.approverType)) {
-          res.status(400).json({ error: `Invalid approver type: ${stage.approverType}` });
-          return;
-        }
-
-        if (stage.approverType === ApproverType.DYNAMIC_ROLE && !Object.values(DynamicRole).includes(stage.approverValue)) {
-          res.status(400).json({ error: `Invalid dynamic role: ${stage.approverValue}` });
-          return;
-        }
-      }
     }
 
-    // Update template fields
-    if (name !== undefined) template.name = name;
-    if (description !== undefined) template.description = description;
-    if (minAmount !== undefined) template.minAmount = minAmount;
-    if (maxAmount !== undefined) template.maxAmount = maxAmount;
-    if (departmentIds !== undefined) template.departmentIds = departmentIds;
-    if (roles !== undefined) template.roles = roles;
-    if (active !== undefined) template.active = active;
+    // Update template
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (parsedConditionJson !== undefined)
+      updateData.conditionJson = JSON.stringify(parsedConditionJson);
+    if (isActive !== undefined) updateData.isActive = isActive;
 
-    await approvalTemplateRepository.save(template);
+    // If stages provided, delete old and create new
+    if (stages !== undefined) {
+      await prisma.approvalTemplateStage.deleteMany({
+        where: { templateId: id },
+      });
 
-    // Update stages if provided
-    if (stages && Array.isArray(stages)) {
-      // Delete existing stages
-      await approvalTemplateStageRepository.remove(template.stages);
-
-      // Create new stages
-      const templateStages: ApprovalTemplateStage[] = [];
-      
-      for (const stage of stages) {
-        const templateStage = approvalTemplateStageRepository.create({
-          templateId: template.id,
-          level: stage.level,
+      updateData.stages = {
+        create: stages.map((stage: any) => ({
+          levelOrder: stage.levelOrder,
           approverType: stage.approverType,
-          approverValue: stage.approverValue || '',
-          conditionalLogic: stage.conditionalLogic || null
-        });
-        templateStages.push(templateStage);
-      }
-
-      await approvalTemplateStageRepository.save(templateStages);
+          approverValue: stage.approverValue,
+          conditionJson: stage.conditionJson
+            ? JSON.stringify(
+                typeof stage.conditionJson === 'string'
+                  ? JSON.parse(stage.conditionJson)
+                  : stage.conditionJson
+              )
+            : '{}',
+        })),
+      };
     }
 
-    // Reload template with updated stages
-    const updatedTemplate = await approvalTemplateRepository.findOne({
-      where: { id: template.id },
-      relations: ['stages']
+    const template = await prisma.approvalTemplate.update({
+      where: { id },
+      data: updateData,
+      include: {
+        stages: { orderBy: { levelOrder: 'asc' } },
+      },
     });
 
-    res.json({
-      message: 'Approval template updated successfully',
-      template: updatedTemplate
-    });
-  } catch (error) {
+    res.json(template);
+  } catch (error: any) {
     console.error('Update template error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update template' });
   }
 };
 
-// Delete approval template
 export const deleteTemplate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
 
-    const template = await approvalTemplateRepository.findOne({
-      where: { id },
-      relations: ['stages']
+    // Check if template is used in any tasks
+    const tasksUsingTemplate = await prisma.task.count({
+      where: { approvalTemplateId: id },
     });
 
-    if (!template) {
-      res.status(404).json({ error: 'Approval template not found' });
+    if (tasksUsingTemplate > 0) {
+      res.status(400).json({
+        error: 'Cannot delete template that is used in tasks',
+        tasksCount: tasksUsingTemplate,
+      });
       return;
     }
 
-    // Delete stages first
-    await approvalTemplateStageRepository.remove(template.stages);
+    await prisma.approvalTemplate.delete({
+      where: { id },
+    });
 
-    // Delete template
-    await approvalTemplateRepository.remove(template);
-
-    res.json({ message: 'Approval template deleted successfully' });
-  } catch (error) {
+    res.json({ message: 'Template deleted successfully' });
+  } catch (error: any) {
     console.error('Delete template error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete template' });
   }
 };

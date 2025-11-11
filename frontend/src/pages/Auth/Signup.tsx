@@ -43,10 +43,19 @@ const Signup: React.FC = () => {
 
   const { data: departments } = useQuery('departments', () => apiService.getDepartments().then(res => res.data));
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement> | React.ChangeEvent<{ name?: string; value: unknown }>) => {
+    const name = e.target.name as keyof typeof formData;
+    const value = e.target.value as string;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value,
+      [name]: value,
+    });
+  };
+
+  const handleDepartmentChange = (event: any) => {
+    setFormData({
+      ...formData,
+      departmentId: event.target.value,
     });
   };
 
@@ -58,7 +67,7 @@ const Signup: React.FC = () => {
     try {
       await signup({
         ...formData,
-        departmentId: formData.departmentId ? parseInt(formData.departmentId) : undefined,
+        departmentId: formData.departmentId ? parseInt(formData.departmentId).toString() : '',
       });
       enqueueSnackbar('Account created successfully!', { variant: 'success' });
       navigate('/dashboard');
@@ -87,7 +96,7 @@ const Signup: React.FC = () => {
             Create Account
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Join TaskFlow today
+            Join Nagrik TaskFlow today
           </Typography>
         </Box>
 
@@ -184,7 +193,7 @@ const Signup: React.FC = () => {
             <Select
               name="departmentId"
               value={formData.departmentId}
-              onChange={handleChange}
+              onChange={handleDepartmentChange}
             >
               <MenuItem value="">Select Department (Optional)</MenuItem>
               {departments?.map((department) => (

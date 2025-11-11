@@ -1,20 +1,25 @@
 import { Router } from 'express';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, requireRole } from '../middleware/auth';
 import {
-  getAllTemplates,
+  getTemplates,
   getTemplateById,
   createTemplate,
   updateTemplate,
-  deleteTemplate
+  deleteTemplate,
 } from '../controllers/approvalTemplateController';
 
 const router = Router();
 
-// Admin only routes
-router.get('/', authenticate, authorize(['admin']), getAllTemplates);
-router.get('/:id', authenticate, authorize(['admin']), getTemplateById);
-router.post('/', authenticate, authorize(['admin']), createTemplate);
-router.put('/:id', authenticate, authorize(['admin']), updateTemplate);
-router.delete('/:id', authenticate, authorize(['admin']), deleteTemplate);
+// All routes require authentication
+router.use(authenticate);
+
+// All routes require admin role
+router.use(requireRole('admin'));
+
+router.get('/', getTemplates);
+router.get('/:id', getTemplateById);
+router.post('/', createTemplate);
+router.put('/:id', updateTemplate);
+router.delete('/:id', deleteTemplate);
 
 export default router;

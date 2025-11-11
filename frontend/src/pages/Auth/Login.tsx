@@ -60,7 +60,7 @@ const Login: React.FC = () => {
       <Paper elevation={3} sx={{ p: 4, maxWidth: 400, width: '100%' }}>
         <Box textAlign="center" mb={3}>
           <Typography variant="h4" component="h1" gutterBottom>
-            Welcome to TaskFlow
+            Welcome to Nagrik TaskFlow
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Sign in to your account

@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  LinearProgress,
   Chip,
   Grid,
   IconButton,
@@ -25,7 +26,7 @@ import {
 } from '@mui/icons-material';
 import { useQuery } from 'react-query';
 import { useNavigate } from 'react-router-dom';
-import { Task, TaskStatus, TaskPriority, TaskCategory } from '../../types';
+import { Task, TaskStatus, TaskPriority, TaskCategory, ChecklistItem } from '../../types';
 import { apiService } from '../../services/api';
 import LoadingSpinner from '../../components/Common/LoadingSpinner';
 
@@ -36,12 +37,17 @@ const Tasks: React.FC = () => {
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | ''>('');
   const [categoryFilter, setCategoryFilter] = useState<TaskCategory | ''>('');
 
-  const { data: tasks, isLoading } = useQuery(
+  const { data: tasks, isLoading, error } = useQuery(
     ['tasks', statusFilter, priorityFilter, categoryFilter],
-    () => apiService.getTasks().then(res => res.data)
+    () => apiService.getTasks().then(res => res.data.tasks),
+    {
+      onError: (error) => {
+        console.error('Error fetching tasks:', error);
+      }
+    }
   );
 
-  const filteredTasks = tasks?.filter((task: Task) => {
+  const filteredTasks = Array.isArray(tasks) ? tasks.filter((task: Task) => {
     const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          task.description?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = !statusFilter || task.status === statusFilter;
@@ -49,33 +55,31 @@ const Tasks: React.FC = () => {
     const matchesCategory = !categoryFilter || task.category === categoryFilter;
     
     return matchesSearch && matchesStatus && matchesPriority && matchesCategory;
-  }) || [];
+  }) : [];
 
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
       case TaskStatus.COMPLETED: return 'success';
-      case TaskStatus.PENDING_APPROVAL: return 'warning';
-      case TaskStatus.APPROVED: return 'info';
-      case TaskStatus.REJECTED: return 'error';
+      case TaskStatus.PENDING: return 'warning';
       case TaskStatus.IN_PROGRESS: return 'primary';
+      case TaskStatus.OVERDUE: return 'error';
       default: return 'default';
     }
   };
 
   const getPriorityColor = (priority: TaskPriority) => {
     switch (priority) {
-      case TaskPriority.URGENT: return 'error';
-      case TaskPriority.HIGH: return 'warning';
-      case TaskPriority.MEDIUM: return 'info';
+      case TaskPriority.HIGH: return 'error';
+      case TaskPriority.MEDIUM: return 'warning';
       case TaskPriority.LOW: return 'success';
       default: return 'default';
     }
   };
 
-  const handleDeleteTask = async (taskId: number) => {
+  const handleDeleteTask = async (taskId: string) => {
     if (window.confirm('Are you sure you want to delete this task?')) {
       try {
-        await apiService.deleteTask(taskId);
+        await apiService.deleteTask(parseInt(taskId));
         // Refresh the tasks list
         window.location.reload();
       } catch (error) {
@@ -86,6 +90,20 @@ const Tasks: React.FC = () => {
 
   if (isLoading) {
     return <LoadingSpinner />;
+  }
+
+  if (error) {
+    return (
+      <Box>
+        <Typography variant="h4">Tasks</Typography>
+        <Typography color="error" sx={{ mt: 2 }}>
+          Error loading tasks: {error instanceof Error ? error.message : 'Unknown error'}
+        </Typography>
+        <Button variant="contained" onClick={() => window.location.reload()} sx={{ mt: 2 }}>
+          Retry
+        </Button>
+      </Box>
+    );
   }
 
   return (
@@ -211,7 +229,7 @@ const Tasks: React.FC = () => {
 
                 <Box display="flex" gap={1} mb={2}>
                   <Chip
-                    label={task.status.replace('_', ' ')}
+                    label={task.status}
                     size="small"
                     color={getStatusColor(task.status) as any}
                   />
@@ -236,14 +254,14 @@ const Tasks: React.FC = () => {
                   </Typography>
                 </Box>
 
-                {task.checklist.length > 0 && (
+                {task.checklistItems && task.checklistItems.length > 0 && (
                   <Box mt={2}>
                     <Typography variant="caption" color="text.secondary">
-                      Progress: {task.checklist.filter(item => item.isCompleted).length} / {task.checklist.length}
+                      Progress: {task.checklistItems.filter((item: ChecklistItem) => item.completed).length} / {task.checklistItems.length}
                     </Typography>
                     <LinearProgress
                       variant="determinate"
-                      value={(task.checklist.filter(item => item.isCompleted).length / task.checklist.length) * 100}
+                      value={(task.checklistItems.filter((item: ChecklistItem) => item.completed).length / task.checklistItems.length) * 100}
                       sx={{ mt: 1 }}
                     />
                   </Box>

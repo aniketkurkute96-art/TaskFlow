@@ -34,12 +34,12 @@ import {
   Close as RejectIcon,
   Visibility as ViewIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { useSnackbar } from 'notistack';
 import { format } from 'date-fns';
 import { apiService } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
-import { Approval, ApprovalStatus, Task } from '../../types';
+import { Approval, ApprovalStatus, Task, TaskStatus } from '../../types';
 import LoadingSpinner from '../../components/Common/LoadingSpinner';
 
 interface TabPanelProps {
@@ -63,21 +63,26 @@ const Approvals: React.FC = () => {
   const [approvalComment, setApprovalComment] = useState('');
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | null>(null);
 
-  const { data: myApprovals, isLoading: loadingMyApprovals } = useQuery({
+  const { data: myApprovalsResponse, isLoading: loadingMyApprovals } = useQuery({
     queryKey: ['my-approvals'],
     queryFn: apiService.getMyApprovals,
   });
 
-  const { data: pendingApprovals, isLoading: loadingPendingApprovals } = useQuery({
+  const { data: pendingApprovalsResponse, isLoading: loadingPendingApprovals } = useQuery({
     queryKey: ['pending-approvals'],
     queryFn: apiService.getPendingApprovals,
     enabled: user?.role === 'ADMIN' || user?.role === 'MANAGER',
   });
 
-  const { data: approvalHistory, isLoading: loadingHistory } = useQuery({
+  const { data: approvalHistoryResponse, isLoading: loadingHistory } = useQuery({
     queryKey: ['approval-history'],
     queryFn: apiService.getApprovalHistory,
   });
+
+  // Extract data from responses
+  const myApprovals = myApprovalsResponse?.data || [];
+  const pendingApprovals = pendingApprovalsResponse?.data?.pendingApprovals || [];
+  const approvalHistory = approvalHistoryResponse?.data || [];
 
   const approveTaskMutation = useMutation({
     mutationFn: ({ taskId, comment }: { taskId: string; comment: string }) =>
@@ -150,6 +155,16 @@ const Approvals: React.FC = () => {
     }
   };
 
+  const getTaskStatusColor = (status: TaskStatus) => {
+    switch (status) {
+      case TaskStatus.COMPLETED: return 'success';
+      case TaskStatus.PENDING: return 'warning';
+      case TaskStatus.IN_PROGRESS: return 'primary';
+      case TaskStatus.OVERDUE: return 'error';
+      default: return 'default';
+    }
+  };
+
   const isLoading = loadingMyApprovals || loadingPendingApprovals || loadingHistory;
 
   if (isLoading) return <LoadingSpinner />;
@@ -181,11 +196,11 @@ const Approvals: React.FC = () => {
 
       {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
         <TabPanel value={tabValue} index={1}>
-          <ApprovalList
-            approvals={pendingApprovals || []}
-            onApprove={(approval) => handleOpenDialog(approval, 'approve')}
-            onReject={(approval) => handleOpenDialog(approval, 'reject')}
-            getStatusColor={getStatusColor}
+          <TaskList
+            tasks={pendingApprovals || []}
+            onApprove={(task) => handleOpenDialog(task as any, 'approve')}
+            onReject={(task) => handleOpenDialog(task as any, 'reject')}
+            getStatusColor={getTaskStatusColor}
             showActions={false}
           />
         </TabPanel>
@@ -224,7 +239,7 @@ const Approvals: React.FC = () => {
             variant="contained"
             color={approvalAction === 'approve' ? 'success' : 'error'}
             disabled={
-              approveTaskMutation.isPending || rejectTaskMutation.isPending
+              approveTaskMutation.isLoading || rejectTaskMutation.isLoading
             }
           >
             {approvalAction === 'approve' ? 'Approve' : 'Reject'}
@@ -232,6 +247,95 @@ const Approvals: React.FC = () => {
         </DialogActions>
       </Dialog>
     </Box>
+  );
+};
+
+interface TaskListProps {
+  tasks: Task[];
+  onApprove: (task: Task) => void;
+  onReject: (task: Task) => void;
+  getStatusColor: (status: TaskStatus) => string;
+  showActions?: boolean;
+}
+
+const TaskList: React.FC<TaskListProps> = ({
+  tasks,
+  onApprove,
+  onReject,
+  getStatusColor,
+  showActions = true,
+}) => {
+  if (tasks.length === 0) {
+    return (
+      <Alert severity="info">
+        No pending tasks found
+      </Alert>
+    );
+  }
+
+  return (
+    <TableContainer component={Paper}>
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableCell>Task</TableCell>
+            <TableCell>Created By</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell>Priority</TableCell>
+            <TableCell>Due Date</TableCell>
+            {showActions && <TableCell>Actions</TableCell>}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {tasks.map((task) => (
+            <TableRow key={task.id}>
+              <TableCell>
+                <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                  {task.title}
+                </Typography>
+              </TableCell>
+              <TableCell>{task.createdBy.name}</TableCell>
+              <TableCell>
+                <Chip
+                  label={task.status}
+                  color={getStatusColor(task.status) as any}
+                  size="small"
+                />
+              </TableCell>
+              <TableCell>
+                <Chip
+                  label={task.priority}
+                  size="small"
+                />
+              </TableCell>
+              <TableCell>
+                {task.dueDate ? format(new Date(task.dueDate), 'MMM dd, yyyy') : 'No due date'}
+              </TableCell>
+              {showActions && (
+                <TableCell>
+                  <Box display="flex" gap={1}>
+                    <IconButton
+                      size="small"
+                      color="success"
+                      onClick={() => onApprove(task)}
+                    >
+                      <ApproveIcon />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => onReject(task)}
+                    >
+                      <RejectIcon />
+                    </IconButton>
+                  </Box>
+                </TableCell>
+              )}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
   );
 };
 

@@ -1,76 +1,64 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
-import { AppDataSource } from '../database';
-import { User } from '../models/User';
+import prisma from '../database';
 
 export interface AuthRequest extends Request {
-  user?: User;
+  user?: {
+    userId: string;
+    email: string;
+    role: string;
+  };
 }
 
-export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+export const authenticate = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    
-    if (!token) {
-      res.status(401).json({ error: 'Access denied. No token provided.' });
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ error: 'No token provided' });
       return;
     }
 
+    const token = authHeader.substring(7);
     const decoded = verifyToken(token);
-    const userRepository = AppDataSource.getRepository(User);
-    const user = await userRepository.findOne({ 
+
+    // Verify user still exists and is active
+    const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      relations: ['department']
     });
 
     if (!user || !user.active) {
-      res.status(401).json({ error: 'Invalid token or user not active.' });
+      res.status(401).json({ error: 'User not found or inactive' });
       return;
     }
 
-    req.user = user;
+    req.user = {
+      userId: decoded.userId,
+      email: decoded.email,
+      role: decoded.role,
+    };
+
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Invalid token.' });
+    res.status(401).json({ error: 'Invalid token' });
   }
 };
 
-export const authorize = (roles: string[]) => {
+export const requireRole = (...roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
-      res.status(401).json({ error: 'Authentication required.' });
+      res.status(401).json({ error: 'Authentication required' });
       return;
     }
 
     if (!roles.includes(req.user.role)) {
-      res.status(403).json({ error: 'Insufficient permissions.' });
+      res.status(403).json({ error: 'Insufficient permissions' });
       return;
     }
 
     next();
   };
-};
-
-export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
-  try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    
-    if (token) {
-      const decoded = verifyToken(token);
-      const userRepository = AppDataSource.getRepository(User);
-      const user = await userRepository.findOne({ 
-        where: { id: decoded.userId },
-        relations: ['department']
-      });
-
-      if (user && user.active) {
-        req.user = user;
-      }
-    }
-    
-    next();
-  } catch (error) {
-    // Continue without authentication
-    next();
-  }
 };

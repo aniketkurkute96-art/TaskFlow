@@ -1,114 +1,75 @@
-import React, { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from './contexts/AuthContext';
-import Layout from './components/Layout/Layout';
-import LoadingSpinner from './components/Common/LoadingSpinner';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import ApprovalBucket from './pages/ApprovalBucket';
+import TaskCreate from './pages/TaskCreate';
+import TaskDetail from './pages/TaskDetail';
+import AdminTemplates from './pages/AdminTemplates';
 
-// Lazy load components for better performance
-const Login = lazy(() => import('./pages/Auth/Login'));
-const Signup = lazy(() => import('./pages/Auth/Signup'));
-const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
-const Tasks = lazy(() => import('./pages/Tasks/Tasks'));
-const TaskDetail = lazy(() => import('./pages/Tasks/TaskDetail'));
-const TaskCreate = lazy(() => import('./pages/Tasks/TaskCreate'));
-const Approvals = lazy(() => import('./pages/Approvals/Approvals'));
-const Users = lazy(() => import('./pages/Users/Users'));
-const Departments = lazy(() => import('./pages/Departments/Departments'));
-const ApprovalTemplates = lazy(() => import('./pages/Admin/ApprovalTemplates'));
-const Profile = lazy(() => import('./pages/Profile/Profile'));
+const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
+};
 
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-  adminOnly?: boolean;
-}
-
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, adminOnly = false }) => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return <LoadingSpinner />;
-  }
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (adminOnly && user.role !== 'ADMIN') {
-    return <Navigate to="/dashboard" replace />;
-  }
-
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, user } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (user?.role !== 'admin') return <Navigate to="/dashboard" />;
   return <>{children}</>;
 };
 
-const App: React.FC = () => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return <LoadingSpinner />;
-  }
-
+function App() {
   return (
-    <Suspense fallback={<LoadingSpinner />}>
-      <Routes>
-        {/* Public routes */}
-        <Route 
-          path="/login" 
-          element={!user ? <Login /> : <Navigate to="/dashboard" replace />} 
-        />
-        <Route 
-          path="/signup" 
-          element={!user ? <Signup /> : <Navigate to="/dashboard" replace />} 
-        />
-
-        {/* Protected routes */}
-        <Route 
-          path="/" 
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="tasks" element={<Tasks />} />
-          <Route path="tasks/create" element={<TaskCreate />} />
-          <Route path="tasks/:id" element={<TaskDetail />} />
-          <Route path="approvals" element={<Approvals />} />
-          <Route path="profile" element={<Profile />} />
-          
-          {/* Admin only routes */}
-          <Route 
-            path="users" 
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/dashboard"
             element={
-              <ProtectedRoute adminOnly>
-                <Users />
-              </ProtectedRoute>
-            } 
+              <PrivateRoute>
+                <Dashboard />
+              </PrivateRoute>
+            }
           />
-          <Route 
-            path="departments" 
+          <Route
+            path="/approval-bucket"
             element={
-              <ProtectedRoute adminOnly>
-                <Departments />
-              </ProtectedRoute>
-            } 
+              <PrivateRoute>
+                <ApprovalBucket />
+              </PrivateRoute>
+            }
           />
-          <Route 
-            path="approval-templates" 
+          <Route
+            path="/tasks/create"
             element={
-              <ProtectedRoute adminOnly>
-                <ApprovalTemplates />
-              </ProtectedRoute>
-            } 
+              <PrivateRoute>
+                <TaskCreate />
+              </PrivateRoute>
+            }
           />
-        </Route>
-
-        {/* Catch all route */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </Suspense>
+          <Route
+            path="/tasks/:id"
+            element={
+              <PrivateRoute>
+                <TaskDetail />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin/templates"
+            element={
+              <AdminRoute>
+                <AdminTemplates />
+              </AdminRoute>
+            }
+          />
+          <Route path="/" element={<Navigate to="/dashboard" />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
-};
+}
 
 export default App;

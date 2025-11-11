@@ -1,73 +1,60 @@
 openapi: 3.0.0
 info:
   title: TaskFlow API
-  description: Task Management Application API with approval workflows
+  description: Task Management with Approval Workflows
   version: 1.0.0
-  contact:
-    name: TaskFlow Team
-    email: support@taskflow.com
-
 servers:
   - url: http://localhost:3001/api
-    description: Development server
+    description: Local development server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
 
 paths:
   /auth/signup:
     post:
-      summary: User registration
-      tags: [Authentication]
+      summary: Register a new user
+      tags: [Auth]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [email, name, password]
+              required: [name, email, password]
               properties:
-                email:
-                  type: string
-                  format: email
-                  example: "john.doe@company.com"
                 name:
                   type: string
-                  example: "John Doe"
+                email:
+                  type: string
                 password:
                   type: string
-                  minLength: 6
-                  example: "password123"
                 role:
                   type: string
-                  enum: [admin, user, hod, cfo]
-                  default: user
+                  enum: [admin, creator, hod, cfo, assignee]
                 departmentId:
                   type: string
-                  format: uuid
-                  nullable: true
       responses:
         '201':
           description: User created successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  user:
-                    $ref: '#/components/schemas/User'
-                  token:
-                    type: string
         '400':
           description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
   /auth/login:
     post:
-      summary: User login
-      tags: [Authentication]
+      summary: Login user
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -78,7 +65,6 @@ paths:
               properties:
                 email:
                   type: string
-                  format: email
                 password:
                   type: string
       responses:
@@ -89,79 +75,393 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
                   user:
-                    $ref: '#/components/schemas/User'
+                    type: object
                   token:
                     type: string
         '401':
           description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
-  /auth/profile:
+  /tasks:
     get:
-      summary: Get current user profile
-      tags: [Authentication]
+      summary: Get all tasks
+      tags: [Tasks]
       security:
-        - bearerAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: assigneeId
+          schema:
+            type: string
+        - in: query
+          name: creatorId
+          schema:
+            type: string
       responses:
         '200':
-          description: User profile retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  user:
-                    $ref: '#/components/schemas/User'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          description: List of tasks
+    
+    post:
+      summary: Create a new task
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, approvalType]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                assigneeId:
+                  type: string
+                departmentId:
+                  type: string
+                amount:
+                  type: number
+                approvalType:
+                  type: string
+                  enum: ['360', 'specific', 'predefined']
+                approvalTemplateId:
+                  type: string
+                manualApprovers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      levelOrder:
+                        type: integer
+                      approverUserId:
+                        type: string
+      responses:
+        '201':
+          description: Task created
 
-components:
-  schemas:
-    User:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        email:
-          type: string
-          format: email
-        name:
-          type: string
-        role:
-          type: string
-          enum: [admin, user, hod, cfo]
-        departmentId:
-          type: string
-          format: uuid
-          nullable: true
-        active:
-          type: boolean
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
+  /tasks/{id}:
+    get:
+      summary: Get task by ID
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task details
+        '404':
+          description: Task not found
 
-    Error:
-      type: object
-      properties:
-        error:
-          type: string
+  /tasks/{id}/forward:
+    post:
+      summary: Forward task to another user
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toUserId]
+              properties:
+                toUserId:
+                  type: string
+      responses:
+        '200':
+          description: Task forwarded
+        '403':
+          description: Forbidden
 
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+  /tasks/{id}/complete:
+    post:
+      summary: Complete task and trigger approval
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task completed and sent for approval
+        '400':
+          description: Cannot complete task
+
+  /tasks/{id}/approve:
+    post:
+      summary: Approve task
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task approved
+        '403':
+          description: Not authorized to approve
+
+  /tasks/{id}/reject:
+    post:
+      summary: Reject task
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                forwardToUserId:
+                  type: string
+      responses:
+        '200':
+          description: Task rejected
+        '403':
+          description: Not authorized to reject
+
+  /tasks/approval/bucket:
+    get:
+      summary: Get pending approvals for current user
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of pending approvals
+
+  /tasks/{id}/comments:
+    post:
+      summary: Add comment to task
+      tags: [Tasks]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+      responses:
+        '201':
+          description: Comment added
+
+  /admin/templates:
+    get:
+      summary: Get all approval templates
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of templates
+    
+    post:
+      summary: Create approval template
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                conditionJson:
+                  type: object
+                isActive:
+                  type: boolean
+                stages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      levelOrder:
+                        type: integer
+                      approverType:
+                        type: string
+                        enum: [user, role, dynamic_role]
+                      approverValue:
+                        type: string
+      responses:
+        '201':
+          description: Template created
+
+  /admin/templates/{id}:
+    get:
+      summary: Get template by ID
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Template details
+    
+    put:
+      summary: Update template
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Template updated
+    
+    delete:
+      summary: Delete template
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Template deleted
+
+  /dashboard:
+    get:
+      summary: Get dashboard statistics
+      tags: [Dashboard]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Dashboard stats
+
+  /users:
+    get:
+      summary: Get all users (admin only)
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of users
+    
+    post:
+      summary: Create user (admin only)
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                password:
+                  type: string
+                role:
+                  type: string
+                departmentId:
+                  type: string
+                active:
+                  type: boolean
+      responses:
+        '201':
+          description: User created
+
+  /departments:
+    get:
+      summary: Get all departments
+      tags: [Departments]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of departments
+    
+    post:
+      summary: Create department
+      tags: [Departments]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                parentId:
+                  type: string
+      responses:
+        '201':
+          description: Department created

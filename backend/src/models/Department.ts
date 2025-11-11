@@ -11,7 +11,7 @@ export class Department {
   name: string;
 
   @Column({ name: 'parent_id', nullable: true })
-  parentId: string;
+  parentId: string | null;
 
   @ManyToOne(() => Department, department => department.children)
   @JoinColumn({ name: 'parent_id' })

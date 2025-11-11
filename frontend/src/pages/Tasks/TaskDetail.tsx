@@ -40,7 +40,7 @@ import {
   CheckCircle as CheckCircleIcon,
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { useSnackbar } from 'notistack';
 import { format } from 'date-fns';
 import { apiService } from '../../services/api';
@@ -67,26 +67,30 @@ const TaskDetail: React.FC = () => {
   });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
-  const { data: task, isLoading, error } = useQuery({
+  const { data: taskResponse, isLoading, error } = useQuery({
     queryKey: ['task', id],
-    queryFn: () => apiService.getTask(id!),
+    queryFn: () => apiService.getTask(parseInt(id!)),
     enabled: !!id,
   });
 
-  const { data: comments } = useQuery({
-    queryKey: ['task-comments', id],
+  const { data: commentsResponse } = useQuery({
+    queryKey: ['taskComments', id],
     queryFn: () => apiService.getTaskComments(id!),
     enabled: !!id,
   });
 
-  const { data: attachments } = useQuery({
-    queryKey: ['task-attachments', id],
+  const { data: attachmentsResponse } = useQuery({
+    queryKey: ['taskAttachments', id],
     queryFn: () => apiService.getTaskAttachments(id!),
     enabled: !!id,
   });
 
+  const task = taskResponse?.data;
+  const comments = commentsResponse?.data;
+  const attachments = attachmentsResponse?.data;
+
   const updateTaskMutation = useMutation({
-    mutationFn: (data: Partial<Task>) => apiService.updateTask(id!, data),
+    mutationFn: (data: Partial<Task>) => apiService.updateTask(parseInt(id!), data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task', id] });
       enqueueSnackbar('Task updated successfully', { variant: 'success' });
@@ -133,7 +137,7 @@ const TaskDetail: React.FC = () => {
   });
 
   const deleteTaskMutation = useMutation({
-    mutationFn: () => apiService.deleteTask(id!),
+    mutationFn: () => apiService.deleteTask(parseInt(id!)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       enqueueSnackbar('Task deleted successfully', { variant: 'success' });
@@ -312,14 +316,14 @@ const TaskDetail: React.FC = () => {
                   placeholder="Add a comment..."
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
-                  disabled={addCommentMutation.isPending}
+                  disabled={addCommentMutation.isLoading}
                 />
                 <Box display="flex" justifyContent="flex-end" mt={1}>
                   <Button
                     variant="contained"
                     startIcon={<SendIcon />}
                     onClick={handleAddComment}
-                    disabled={!commentText.trim() || addCommentMutation.isPending}
+                    disabled={!commentText.trim() || addCommentMutation.isLoading}
                   >
                     Add Comment
                   </Button>
@@ -390,7 +394,7 @@ const TaskDetail: React.FC = () => {
                       variant="contained"
                       size="small"
                       onClick={handleFileUpload}
-                      disabled={uploadAttachmentMutation.isPending}
+                      disabled={uploadAttachmentMutation.isLoading}
                       fullWidth
                       sx={{ mt: 1 }}
                     >
@@ -505,7 +509,7 @@ const TaskDetail: React.FC = () => {
           <Button
             onClick={handleEditSubmit}
             variant="contained"
-            disabled={updateTaskMutation.isPending}
+            disabled={updateTaskMutation.isLoading}
           >
             Save Changes
           </Button>

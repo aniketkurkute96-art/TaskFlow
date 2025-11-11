@@ -1,36 +1,18 @@
 import jwt from 'jsonwebtoken';
-import { User } from '../models/User';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 export interface JWTPayload {
   userId: string;
   email: string;
   role: string;
-  departmentId?: string;
 }
 
-export const generateToken = (user: User): string => {
-  const payload: JWTPayload = {
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-    departmentId: user.departmentId || undefined
-  };
-
-  return jwt.sign(payload, process.env.JWT_SECRET || 'default-secret', {
-    expiresIn: '7d'
-  });
+export const generateToken = (payload: JWTPayload): string => {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 };
 
 export const verifyToken = (token: string): JWTPayload => {
-  try {
-    return jwt.verify(token, process.env.JWT_SECRET || 'default-secret') as JWTPayload;
-  } catch (error) {
-    throw new Error('Invalid or expired token');
-  }
-};
-
-export const generateRefreshToken = (userId: string): string => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET || 'default-secret', {
-    expiresIn: '30d'
-  });
+  return jwt.verify(token, JWT_SECRET) as JWTPayload;
 };

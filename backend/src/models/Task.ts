@@ -9,6 +9,9 @@ import { ChecklistItem } from './ChecklistItem';
 import { Attachment } from './Attachment';
 import { ApprovalTemplate } from './ApprovalTemplate';
 
+// Re-export the enums for use in other files
+export { TaskStatus, AssigneeType, ApprovalType } from '../types/enums';
+
 @Entity('tasks')
 export class Task {
   @PrimaryGeneratedColumn('uuid')
@@ -28,17 +31,17 @@ export class Task {
   creator: User;
 
   @Column({ name: 'assignee_id', nullable: true })
-  assigneeId: string;
+  assigneeId: string | null;
 
   @ManyToOne(() => User, user => user.assignedTasks, { nullable: true })
   @JoinColumn({ name: 'assignee_id' })
   assignee: User;
 
-  @Column({ name: 'assignee_type', type: 'enum', enum: AssigneeType, default: AssigneeType.USER })
+  @Column({ name: 'assignee_type', type: 'text', default: AssigneeType.USER })
   assigneeType: AssigneeType;
 
   @Column({ name: 'department_id', nullable: true })
-  departmentId: string;
+  departmentId: string | null;
 
   @ManyToOne(() => Department, department => department.tasks)
   @JoinColumn({ name: 'department_id' })
@@ -47,11 +50,11 @@ export class Task {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   amount: number;
 
-  @Column({ name: 'approval_type', type: 'enum', enum: ApprovalType })
+  @Column({ name: 'approval_type', type: 'text' })
   approvalType: ApprovalType;
 
   @Column({ name: 'approval_template_id', nullable: true })
-  approvalTemplateId: string;
+  approvalTemplateId: string | null;
 
   @ManyToOne(() => ApprovalTemplate, template => template.tasks)
   @JoinColumn({ name: 'approval_template_id' })
@@ -64,8 +67,7 @@ export class Task {
   dueDate: Date;
 
   @Column({
-    type: 'enum',
-    enum: TaskStatus,
+    type: 'text',
     default: TaskStatus.DRAFT
   })
   status: TaskStatus;

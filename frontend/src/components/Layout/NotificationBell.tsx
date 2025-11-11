@@ -34,7 +34,8 @@ const NotificationBell: React.FC = () => {
 
   const fetchNotifications = async () => {
     try {
-      const data = await apiService.getNotifications();
+      const res = await apiService.getNotifications();
+      const data = res.data;
       setNotifications(data);
       setUnreadCount(data.filter((n: Notification) => !n.read).length);
     } catch (error) {

@@ -1,308 +1,387 @@
-# TaskFlow - Task Management Application
+# Nagrik TaskFlow - Task Management with Approval Workflows
 
-A comprehensive task management application with advanced approval workflows, real-time collaboration, and organizational hierarchy support.
+A full-stack task management application with sophisticated approval workflows including 360° approval, specific approvers, and predefined templates.
 
-## Features
+## 🏗️ Architecture
 
-### Core Functionality
-- ✅ **User Management** - Complete user CRUD operations with role-based access control
-- ✅ **Authentication** - JWT-based authentication with secure token management
-- ✅ **Task Management** - Create, update, and manage tasks with comprehensive fields
-- ✅ **Approval Workflows** - Multi-level approval system with customizable templates
-- ✅ **Department Hierarchy** - Organizational structure with department management
-- ✅ **Real-time Updates** - WebSocket integration for live notifications
-- ✅ **Dashboard Analytics** - Comprehensive statistics and reporting
+- **Backend**: Node.js + TypeScript + Express + Prisma ORM + SQLite
+- **Frontend**: React + Vite + TypeScript + TailwindCSS
+- **Auth**: JWT-based authentication
+- **Database**: SQLite (easy to switch to PostgreSQL)
 
-### Advanced Features
-- ✅ **Backward 360 Approval** - Flexible approval workflow for complex scenarios
-- ✅ **Approval Templates** - Configurable approval workflows with conditions
-- ✅ **Approval Bucket** - Centralized view for pending approvals
-- ✅ **Task Forwarding** - Track task movement through the organization
-- ✅ **Role-based Access** - Admin, HOD, CFO, and regular user roles
-- ✅ **File Attachments** - Support for task attachments and documents
-- ✅ **Comments System** - Collaborative discussion on tasks
-- ✅ **Checklist Items** - Sub-tasks and progress tracking
+## 📋 Features
 
-## Technology Stack
+### Authentication & Users
+- JWT signup & login endpoints
+- 5 pre-seeded users with different roles
+- Admin-only endpoints for user management
 
-### Backend
-- **Node.js** with TypeScript
-- **Express.js** - Web framework
-- **TypeORM** - Object-Relational Mapping
-- **SQLite** - Database (easily configurable for PostgreSQL/MySQL)
-- **Socket.IO** - Real-time communication
-- **JWT** - Authentication
-- **Swagger** - API documentation
+### Task Management
+- Create tasks with assignees and departments
+- Forward tasks to other users (creates audit trail)
+- Complete tasks to trigger approval workflow
+- Three approval types:
+  - **360°**: Builds backward queue from forward path
+  - **Specific**: Manual approver selection
+  - **Predefined**: Template-based with auto-matching
 
-### Security Features
-- **Helmet** - Security headers
-- **CORS** - Cross-origin resource sharing
-- **Rate Limiting** - Request throttling
-- **Input Validation** - Data sanitization
-- **JWT Tokens** - Secure authentication
+### Approval Workflows
+- Multi-level approval queues
+- Approve/Reject actions
+- Forward during approval
+- Automatic template matching based on department and amount
+- Dynamic role resolution (HOD, CFO)
 
-## Project Structure
+### Admin Features
+- Approval template builder
+- User management
+- Template conditions (department, amount thresholds)
+- Multi-stage approval configurations
 
-```
-backend/
-├── src/
-│   ├── controllers/     # Request handlers
-│   ├── middleware/      # Express middleware
-│   ├── models/         # Database entities
-│   ├── routes/         # API routes
-│   ├── services/       # Business logic
-│   ├── types/          # TypeScript type definitions
-│   ├── utils/          # Utility functions
-│   ├── scripts/        # Database scripts
-│   ├── database.ts     # Database configuration
-│   └── server.ts       # Application entry point
-├── swagger.yaml        # API documentation
-├── package.json        # Dependencies
-└── tsconfig.json       # TypeScript configuration
-```
+### Dashboard & UI
+- Personal task dashboard
+- Approval bucket (pending approvals)
+- Overdue task tracking
+- Task detail with forward path and approval queue
+- Comments and attachments support
 
-## Installation & Setup
+## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js (v16 or higher)
+- Node.js 18+ 
 - npm or yarn
 
-### Backend Setup
+### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd TaskFlow/backend
-   ```
+1. **Clone and install backend dependencies**
+```bash
+cd backend
+npm install
+```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+2. **Setup Prisma and seed database**
+```bash
+# Generate Prisma client
+npm run prisma:generate
 
-3. **Environment Configuration**
-   Copy the example environment file and configure:
-   ```bash
-   cp .env.example .env
-   ```
+# Create database and run migrations
+npm run prisma:migrate
 
-   Edit `.env` with your configuration:
-   ```
-   NODE_ENV=development
-   PORT=3001
-   JWT_SECRET=your-super-secret-jwt-key
-   JWT_REFRESH_SECRET=your-refresh-secret-key
-   JWT_EXPIRES_IN=1h
-   JWT_REFRESH_EXPIRES_IN=7d
-   DATABASE_URL=sqlite:./database.sqlite
-   FRONTEND_URL=http://localhost:3000
-   ```
+# Seed database with test data
+npm run seed
+```
 
-4. **Database Setup**
-   The application uses SQLite by default. The database will be automatically created on first run.
+3. **Install frontend dependencies**
+```bash
+cd ../frontend
+npm install
+```
 
-5. **Seed Sample Data**
-   ```bash
-   npm run seed
-   ```
+### Running the Application
 
-   This creates:
-   - 4 departments (HR, Finance, IT, Operations)
-   - 9 sample users with different roles
-   - 3 approval templates (Simple, Financial, High-Value)
+**Terminal 1 - Backend:**
+```bash
+cd backend
+npm run dev
+```
+Backend runs on: http://localhost:3001
 
-6. **Start the Server**
-   ```bash
-   # Development mode
-   npm run dev
+**Terminal 2 - Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+Frontend runs on: http://localhost:5173
 
-   # Production mode
-   npm run build
-   npm start
-   ```
+### Access the Application
 
-7. **Access the Application**
-   - API Server: http://localhost:3001
-   - API Documentation: http://localhost:3001/api-docs
+Open http://localhost:5173 in your browser.
 
-## Sample Users
+## 👤 Test Accounts
 
-After running the seed script, you can log in with these test accounts:
+All users have password: `password`
 
-| Email | Password | Role | Department |
-|-------|----------|------|------------|
-| admin@taskflow.com | admin123 | Admin | - |
-| hr.manager@taskflow.com | hr123 | HOD | HR |
-| finance.manager@taskflow.com | finance123 | HOD | Finance |
-| cfo@taskflow.com | cfo123 | CFO | Finance |
-| it.manager@taskflow.com | it123 | HOD | IT |
-| operations.manager@taskflow.com | ops123 | HOD | Operations |
-| hr.employee@taskflow.com | employee123 | User | HR |
-| finance.employee@taskflow.com | employee123 | User | Finance |
-| it.employee@taskflow.com | employee123 | User | IT |
+| Email | Role | Purpose |
+|-------|------|---------|
+| admin@example.com | admin | Full system access, template management |
+| creator@example.com | creator | Create and manage tasks |
+| hod@example.com | hod | Head of Department, approver |
+| cfo@example.com | cfo | Chief Financial Officer, approver |
+| assignee@example.com | assignee | Task assignee, can complete tasks |
 
-## API Endpoints
+## 📚 API Documentation
 
-### Authentication
-- `POST /api/auth/signup` - User registration
-- `POST /api/auth/login` - User login
-- `GET /api/auth/profile` - Get user profile
+Swagger UI available at: http://localhost:3001/api/docs
 
-### Users (Admin only)
-- `GET /api/users` - List all users
-- `GET /api/users/:id` - Get user by ID
-- `POST /api/users` - Create new user
-- `PUT /api/users/:id` - Update user
-- `DELETE /api/users/:id` - Delete user
-
-### Departments (Admin only)
-- `GET /api/departments` - List all departments
-- `GET /api/departments/:id` - Get department by ID
-- `POST /api/departments` - Create new department
-- `PUT /api/departments/:id` - Update department
-- `DELETE /api/departments/:id` - Delete department
-
-### Tasks
-- `GET /api/tasks` - Get user's tasks
-- `GET /api/tasks/:id` - Get task details
-- `POST /api/tasks` - Create new task
-- `PUT /api/tasks/:id` - Update task
-- `DELETE /api/tasks/:id` - Delete task
-
-### Approvals
-- `GET /api/approvals/bucket` - Get approval bucket
-- `GET /api/approvals/tasks/:taskId/approvers` - Get task approvers
-- `POST /api/approvals/tasks/:taskId/submit` - Submit for approval
-- `POST /api/approvals/tasks/:taskId/approve` - Approve/reject task
-
-### Approval Templates (Admin only)
-- `GET /api/approval-templates` - List all templates
-- `GET /api/approval-templates/:id` - Get template by ID
-- `POST /api/approval-templates` - Create new template
-- `PUT /api/approval-templates/:id` - Update template
-- `DELETE /api/approval-templates/:id` - Delete template
-
-### Dashboard
-- `GET /api/dashboard/stats` - Get dashboard statistics
-- `GET /api/dashboard/recent-tasks` - Get recent tasks
-- `GET /api/dashboard/pending-approvals` - Get pending approvals
-
-## Approval Workflow System
-
-### Approval Types
-1. **Simple Approval** - Single level (HOD approval)
-2. **Financial Approval** - Two levels (HOD → CFO)
-3. **High-Value Approval** - Three levels (HOD → CFO → Admin)
-
-### Approval Process
-1. User creates task in DRAFT status
-2. User submits task for approval
-3. System selects appropriate template based on criteria
-4. Approvers are notified and can approve/reject
-5. Task status updates based on approval decisions
-6. All approvers must approve for final approval
-
-### Backward 360 Approval
-Special approval workflow that allows:
-- Circular approval paths
-- Dynamic approver selection
-- Role-based routing
-- Conditional logic
-
-## Development Commands
+## 🧪 Testing
 
 ```bash
-# Development server with hot reload
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
-
-# Run database seeder
-npm run seed
-
-# Run tests
+cd backend
 npm test
+```
 
-# Lint code
+Tests include:
+- Auth flow (login, signup)
+- Task creation with different approval types
+- Forward → Complete → Approve workflow
+- Predefined template matching
+- Approval bucket listing
+- Reject flow
+
+## 📖 Key Workflows
+
+### 1. Create → Forward → Complete → Approve (360°)
+
+```javascript
+// 1. Creator creates task
+POST /api/tasks
+{
+  "title": "Task",
+  "approvalType": "360",
+  "assigneeId": "user-id"
+}
+
+// 2. Assignee forwards to colleague
+POST /api/tasks/:id/forward
+{ "toUserId": "colleague-id" }
+
+// 3. Colleague completes task
+POST /api/tasks/:id/complete
+// → Triggers 360° approval engine
+// → Builds backward queue from forward path
+
+// 4. Each approver approves in order
+POST /api/tasks/:id/approve
+
+// 5. After all approve, task status → approved
+```
+
+### 2. Predefined Template Flow
+
+```javascript
+// 1. Create task with amount and department
+POST /api/tasks
+{
+  "title": "Vendor Payment",
+  "departmentId": "accounts-dept-id",
+  "amount": 150000,
+  "approvalType": "predefined"
+}
+
+// 2. Complete task
+POST /api/tasks/:id/complete
+// → Matches "Vendor Bill Approval" template
+// → amount >= 100000 && department = "Accounts"
+// → Creates approvers: HOD → CFO
+
+// 3. Approvers approve sequentially
+```
+
+### 3. Reject and Request Changes
+
+```javascript
+POST /api/tasks/:id/reject
+{
+  "forwardToUserId": "assignee-id" // optional
+}
+// → Marks approver rejected
+// → Creates forward node back to assignee
+// → Clears approval queue
+// → Task status → rejected
+```
+
+## 🏗️ Project Structure
+
+```
+TaskFlow/
+├── backend/
+│   ├── prisma/
+│   │   └── schema.prisma          # Database schema
+│   ├── src/
+│   │   ├── controllers/           # Request handlers
+│   │   ├── routes/                # API routes
+│   │   ├── services/              # Business logic (approval engine)
+│   │   ├── middleware/            # Auth middleware
+│   │   ├── utils/                 # JWT utilities
+│   │   ├── scripts/
+│   │   │   └── seed.ts            # Database seeding
+│   │   ├── __tests__/             # Integration tests
+│   │   ├── database.ts            # Prisma client
+│   │   └── server.ts              # Express app
+│   ├── swagger.yaml               # OpenAPI specification
+│   ├── package.json
+│   └── tsconfig.json
+│
+├── frontend/
+│   ├── src/
+│   │   ├── pages/                 # React pages
+│   │   │   ├── Login.tsx
+│   │   │   ├── Dashboard.tsx
+│   │   │   ├── ApprovalBucket.tsx
+│   │   │   ├── TaskCreate.tsx
+│   │   │   ├── TaskDetail.tsx
+│   │   │   └── AdminTemplates.tsx
+│   │   ├── components/            # Shared components
+│   │   │   └── Layout.tsx
+│   │   ├── contexts/              # React contexts
+│   │   │   └── AuthContext.tsx
+│   │   ├── services/              # API client
+│   │   │   └── api.ts
+│   │   ├── types/                 # TypeScript types
+│   │   │   └── index.ts
+│   │   ├── App.tsx
+│   │   └── main.tsx
+│   ├── index.html
+│   ├── vite.config.ts
+│   ├── tailwind.config.js
+│   ├── package.json
+│   └── tsconfig.json
+│
+└── README.md
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+Create `backend/.env`:
+
+```env
+PORT=3001
+NODE_ENV=development
+JWT_SECRET=your-secret-key-change-in-production
+JWT_EXPIRES_IN=7d
+FRONTEND_URL=http://localhost:5173
+```
+
+### Database Configuration
+
+**SQLite (Default):**
+- Database file: `backend/prisma/data/taskflow.db`
+- No setup required, created automatically
+
+**Switch to PostgreSQL:**
+
+1. Update `backend/prisma/schema.prisma`:
+```prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+```
+
+2. Add to `.env`:
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/taskflow"
+```
+
+3. Run migrations:
+```bash
+npm run prisma:migrate
+```
+
+## 🔐 Security Notes
+
+### ⚠️ IMPORTANT FOR PRODUCTION
+
+1. **Passwords**: Seeded users use plaintext password `"password"`. In production:
+   - Use `bcrypt.hash(password, 10)` for all passwords
+   - See `backend/src/scripts/seed.ts` for TODO comments
+
+2. **JWT Secret**: Change `JWT_SECRET` in `.env` to a strong random string
+
+3. **Database**: 
+   - Use PostgreSQL or MySQL instead of SQLite
+   - Enable SSL connections
+   - Set `synchronize: false` in Prisma config
+
+4. **Rate Limiting**: Configured at 100 requests/15min. Adjust for production.
+
+5. **CORS**: Currently allows `localhost:5173`. Update for production domain.
+
+## 🎯 Approval Engine Logic
+
+### 360° Approval
+1. User forwards task creating TaskNode entries
+2. On complete, engine:
+   - Queries all TaskNode for this task
+   - Extracts unique user IDs from forward path
+   - Deduplicates and reverses order
+   - Excludes completer
+   - Creates TaskApprover entries in backward order
+
+### Predefined Templates
+1. On complete, engine:
+   - Fetches active templates
+   - Checks conditionJson matching (department, amount_min)
+   - Resolves approvers from stages (user, role, dynamic_role)
+   - Creates TaskApprover entries
+   - Dynamic roles (HOD, CFO) resolved via department/role lookup
+
+### Specific Approvers
+1. Manual approvers added during task creation
+2. On complete, engine validates approvers exist
+3. Processes existing TaskApprover entries
+
+## 📡 Realtime / Notifications
+
+Currently uses polling. For Socket.IO realtime updates:
+
+```javascript
+// backend/src/server.ts has TODO comments
+// Add socket.io server setup
+// Emit events on: task created, forwarded, approved, rejected
+
+// frontend can add socket.io-client
+// Listen for events and update UI
+```
+
+## 🐛 Development
+
+### Build for Production
+
+**Backend:**
+```bash
+cd backend
+npm run build
+npm start
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm run build
+npm run preview
+```
+
+### Linting
+
+```bash
+# Backend
+cd backend
 npm run lint
 
-# TypeORM CLI
-npm run typeorm -- migration:run
-npm run typeorm -- migration:revert
+# Frontend
+cd frontend
+npm run lint
 ```
 
-## Security Considerations
+## 📝 License
 
-### Production Deployment
-- Change all default passwords and secrets
-- Use environment variables for sensitive data
-- Enable HTTPS
-- Configure proper CORS settings
-- Set up rate limiting
-- Use a production-grade database (PostgreSQL recommended)
-- Implement proper logging and monitoring
+MIT
 
-### Password Security
-- Currently using plain text passwords for prototype
-- **IMPORTANT**: Implement bcrypt hashing for production
-- Add password complexity requirements
-- Implement password reset functionality
-
-## Database Configuration
-
-### SQLite (Development)
-```env
-DATABASE_URL=sqlite:./database.sqlite
-```
-
-### PostgreSQL (Production)
-```env
-DATABASE_URL=postgresql://username:password@localhost:5432/taskflow
-```
-
-### MySQL (Alternative)
-```env
-DATABASE_URL=mysql://username:password@localhost:3306/taskflow
-```
-
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new features
-5. Ensure all tests pass
-6. Submit a pull request
+2. Create feature branch
+3. Commit changes
+4. Push to branch
+5. Open pull request
 
-## License
+## 📞 Support
 
-This project is licensed under the MIT License.
+For issues and questions, please open a GitHub issue.
 
-## Support
+---
 
-For issues and questions:
-- Check the API documentation at `/api-docs`
-- Review the error logs
-- Ensure all environment variables are properly configured
-- Verify database connectivity
-
-## Roadmap
-
-### Frontend (Next Phase)
-- React-based admin dashboard
-- User-friendly task creation interface
-- Real-time notifications
-- Mobile-responsive design
-- Advanced filtering and search
-
-### Advanced Features
-- Email notifications
-- SMS notifications
-- Advanced reporting
-- Integration with external systems
-- Mobile applications
-- Advanced analytics and ML insights
+**Built with ❤️ for efficient task management and approval workflows**

@@ -6,7 +6,8 @@ export enum TaskStatus {
   APPROVAL_PENDING = 'approval_pending',
   APPROVED = 'approved',
   REJECTED = 'rejected',
-  CANCELLED = 'cancelled'
+  CANCELLED = 'cancelled',
+  PENDING_APPROVAL = "PENDING_APPROVAL"
 }
 
 export enum AssigneeType {
@@ -17,5 +18,6 @@ export enum AssigneeType {
 export enum ApprovalType {
   THREE_SIXTY = '360',
   SPECIFIC = 'specific',
-  PREDEFINED = 'predefined'
+  PREDEFINED = 'predefined',
+  BACKWARD_360 = "BACKWARD_360"
 }

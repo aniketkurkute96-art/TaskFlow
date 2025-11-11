@@ -19,6 +19,7 @@ import {
   HourglassEmpty as PendingIcon,
   Cancel as RejectedIcon,
   TrendingUp as TrendingIcon,
+  Approval as ApprovalIcon,
 } from '@mui/icons-material';
 import { useQuery } from 'react-query';
 import { useNavigate } from 'react-router-dom';
@@ -31,17 +32,31 @@ const Dashboard: React.FC = () => {
 
   const { data: stats, isLoading: statsLoading } = useQuery(
     'dashboard-stats',
-    () => apiService.getDashboardStats().then(res => res.data)
+    () => apiService.getDashboardStats().then(res => {
+      const d = res.data || {};
+      const task = d.taskStats || {};
+      const appr = d.approvalStats || {};
+      return {
+        totalTasks: task.total ?? 0,
+        pendingTasks: task.pendingApproval ?? 0,
+        completedTasks: task.completed ?? 0,
+        overdueTasks: 0,
+        totalApprovals: appr.total ?? 0,
+        pendingApprovals: appr.pending ?? 0,
+        approvedApprovals: appr.approved ?? 0,
+        rejectedApprovals: appr.rejected ?? 0,
+      } as DashboardStats;
+    })
   );
 
   const { data: recentTasks, isLoading: tasksLoading } = useQuery(
     'recent-tasks',
-    () => apiService.getRecentTasks().then(res => res.data)
+    () => apiService.getRecentTasks().then(res => res.data?.tasks ?? [])
   );
 
   const { data: pendingApprovals, isLoading: approvalsLoading } = useQuery(
     'pending-approvals',
-    () => apiService.getPendingApprovals().then(res => res.data)
+    () => apiService.getPendingApprovals().then(res => res.data?.pendingApprovals ?? [])
   );
 
   if (statsLoading || tasksLoading || approvalsLoading) {

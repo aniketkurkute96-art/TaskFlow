@@ -1,20 +1,32 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import {
-  getUserTasks,
-  getTaskById,
   createTask,
-  updateTask,
-  deleteTask
+  getTasks,
+  getTaskById,
+  forwardTask,
+  completeTask,
+  approveTask,
+  rejectTask,
+  updateTaskStatus,
+  getApprovalBucket,
+  addComment,
 } from '../controllers/taskController';
 
 const router = Router();
 
 // All routes require authentication
-router.get('/', authenticate, getUserTasks);
-router.get('/:id', authenticate, getTaskById);
-router.post('/', authenticate, createTask);
-router.put('/:id', authenticate, updateTask);
-router.delete('/:id', authenticate, deleteTask);
+router.use(authenticate);
+
+router.get('/approval/bucket', getApprovalBucket);
+router.get('/', getTasks);
+router.get('/:id', getTaskById);
+router.post('/', createTask);
+router.patch('/:id/status', updateTaskStatus);
+router.post('/:id/forward', forwardTask);
+router.post('/:id/complete', completeTask);
+router.post('/:id/approve', approveTask);
+router.post('/:id/reject', rejectTask);
+router.post('/:id/comments', addComment);
 
 export default router;

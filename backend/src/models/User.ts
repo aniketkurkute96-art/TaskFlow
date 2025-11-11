@@ -24,14 +24,13 @@ export class User {
   password: string; // Note: Plain text for prototype - add bcrypt hashing for production
 
   @Column({
-    type: 'enum',
-    enum: UserRole,
+    type: 'text',
     default: UserRole.USER
   })
   role: UserRole;
 
   @Column({ name: 'department_id', nullable: true })
-  departmentId: string;
+  departmentId: string | null;
 
   @ManyToOne(() => Department, department => department.users)
   @JoinColumn({ name: 'department_id' })

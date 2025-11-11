@@ -1,35 +1,59 @@
-import { AppDataSource } from '../database';
-import { User, UserRole } from '../models/User';
-import { Department } from '../models/Department';
-import { AuthRequest } from '../middleware/auth';
 import { Response } from 'express';
+import bcrypt from 'bcryptjs';
+import { AuthRequest } from '../middleware/auth';
+import prisma from '../database';
 
-const userRepository = AppDataSource.getRepository(User);
-const departmentRepository = AppDataSource.getRepository(Department);
-
-// Get all users (Admin only)
-export const getAllUsers = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getUsers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const users = await userRepository.find({
-      relations: ['department'],
-      select: ['id', 'email', 'name', 'role', 'departmentId', 'active', 'createdAt', 'updatedAt']
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        departmentId: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+        department: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
-    res.json({ users });
-  } catch (error) {
-    console.error('Get all users error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.json(users);
+  } catch (error: any) {
+    console.error('Get users error:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
   }
 };
 
-// Get user by ID
 export const getUserById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    
-    const user = await userRepository.findOne({
+
+    const user = await prisma.user.findUnique({
       where: { id },
-      relations: ['department']
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        departmentId: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+        department: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     });
 
     if (!user) {
@@ -37,163 +61,117 @@ export const getUserById = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
-    res.json({ user });
-  } catch (error) {
-    console.error('Get user by ID error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.json(user);
+  } catch (error: any) {
+    console.error('Get user error:', error);
+    res.status(500).json({ error: 'Failed to fetch user' });
   }
 };
 
-// Create new user (Admin only)
 export const createUser = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { email, name, password, role, departmentId } = req.body;
+    const { name, email, password, role, departmentId, active } = req.body;
 
-    // Validate required fields
-    if (!email || !name || !password) {
-      res.status(400).json({ error: 'Email, name, and password are required' });
+    if (!name || !email || !password) {
+      res.status(400).json({ error: 'Name, email, and password are required' });
       return;
     }
 
     // Check if user already exists
-    const existingUser = await userRepository.findOne({ where: { email } });
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
     if (existingUser) {
-      res.status(400).json({ error: 'User with this email already exists' });
+      res.status(400).json({ error: 'User already exists' });
       return;
     }
 
-    // Validate department if provided
-    let department = null;
-    if (departmentId) {
-      department = await departmentRepository.findOne({ where: { id: departmentId } });
-      if (!department) {
-        res.status(400).json({ error: 'Invalid department ID' });
-        return;
-      }
-    }
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create new user
-    const user = userRepository.create({
-      email,
-      name,
-      password, // Note: Plain text for prototype - add bcrypt hashing for production
-      role: role || UserRole.USER,
-      departmentId: departmentId || null,
-      active: true
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        role: role || 'assignee',
+        departmentId,
+        active: active !== undefined ? active : true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        departmentId: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
-    await userRepository.save(user);
-
-    // Return created user without password
-    const { password: _, ...userWithoutPassword } = user;
-    res.status(201).json({
-      message: 'User created successfully',
-      user: userWithoutPassword
-    });
-  } catch (error) {
+    res.status(201).json(user);
+  } catch (error: any) {
     console.error('Create user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to create user' });
   }
 };
 
-// Update user (Admin only)
 export const updateUser = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { email, name, password, role, departmentId, active } = req.body;
+    const { name, email, role, departmentId, active, password } = req.body;
 
-    const user = await userRepository.findOne({ where: { id } });
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = email;
+    if (role !== undefined) updateData.role = role;
+    if (departmentId !== undefined) updateData.departmentId = departmentId;
+    if (active !== undefined) updateData.active = active;
+    if (password !== undefined) {
+      updateData.password = await bcrypt.hash(password, 10);
     }
 
-    // Validate department if provided
-    if (departmentId !== undefined) {
-      if (departmentId === null) {
-        user.departmentId = null;
-      } else {
-        const department = await departmentRepository.findOne({ where: { id: departmentId } });
-        if (!department) {
-          res.status(400).json({ error: 'Invalid department ID' });
-          return;
-        }
-        user.departmentId = departmentId;
-      }
-    }
-
-    // Update fields if provided
-    if (email !== undefined) user.email = email;
-    if (name !== undefined) user.name = name;
-    if (password !== undefined) user.password = password; // Note: Plain text for prototype
-    if (role !== undefined) user.role = role;
-    if (active !== undefined) user.active = active;
-
-    await userRepository.save(user);
-
-    // Return updated user without password
-    const { password: _, ...userWithoutPassword } = user;
-    res.json({
-      message: 'User updated successfully',
-      user: userWithoutPassword
+    const user = await prisma.user.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        departmentId: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
-  } catch (error) {
+
+    res.json(user);
+  } catch (error: any) {
     console.error('Update user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to update user' });
   }
 };
 
-// Delete user (Admin only)
 export const deleteUser = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
 
-    const user = await userRepository.findOne({ where: { id } });
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
+    // Prevent deleting yourself
+    if (id === req.user!.userId) {
+      res.status(400).json({ error: 'Cannot delete your own account' });
       return;
     }
 
-    await userRepository.remove(user);
+    await prisma.user.delete({
+      where: { id },
+    });
 
     res.json({ message: 'User deleted successfully' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Delete user error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
-
-// Get current user profile
-export const getProfile = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const user = req.user!;
-    
-    // Reload user with department relation
-    const fullUser = await userRepository.findOne({
-      where: { id: user.id },
-      relations: ['department']
-    });
-
-    if (!fullUser) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-
-    res.json({
-      user: {
-        id: fullUser.id,
-        email: fullUser.email,
-        name: fullUser.name,
-        role: fullUser.role,
-        departmentId: fullUser.departmentId,
-        department: fullUser.department,
-        active: fullUser.active,
-        createdAt: fullUser.createdAt,
-        updatedAt: fullUser.updatedAt
-      }
-    });
-  } catch (error) {
-    console.error('Get profile error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 };

@@ -60,8 +60,14 @@ const Layout: React.FC<LayoutProps> = () => {
     navigate('/login');
   };
 
-  const getInitials = (firstName: string, lastName: string) => {
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  const getInitials = (firstName?: string, lastName?: string, name?: string) => {
+    const safeFirst = (firstName || (name ? name.split(' ')[0] : '') || '').trim();
+    const safeLast = (lastName || (name ? name.split(' ')[1] : '') || '').trim();
+    const a = safeFirst ? safeFirst.charAt(0) : '';
+    const b = safeLast ? safeLast.charAt(0) : '';
+    const initials = `${a}${b}`.toUpperCase();
+    if (initials) return initials;
+    return name ? name.charAt(0).toUpperCase() : '?';
   };
 
   const menuItems = [
@@ -79,7 +85,7 @@ const Layout: React.FC<LayoutProps> = () => {
     <div>
       <Toolbar>
         <Typography variant="h6" noWrap component="div">
-          TaskFlow
+          Nagrik TaskFlow
         </Typography>
       </Toolbar>
       <List>
@@ -119,7 +125,7 @@ const Layout: React.FC<LayoutProps> = () => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            TaskFlow
+            Nagrik TaskFlow
           </Typography>
           <NotificationBell />
           <IconButton
@@ -132,7 +138,7 @@ const Layout: React.FC<LayoutProps> = () => {
             color="inherit"
           >
             <Avatar sx={{ width: 32, height: 32 }}>
-              {user ? getInitials(user.firstName, user.lastName) : <AccountCircle />}
+              {user ? getInitials(user.firstName, user.lastName, user.name) : <AccountCircle />}
             </Avatar>
           </IconButton>
           <Menu

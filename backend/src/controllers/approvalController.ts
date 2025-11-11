@@ -1,9 +1,7 @@
 import { AppDataSource } from '../database';
 import { Task } from '../models/Task';
 import { TaskApprover } from '../models/TaskApprover';
-import { User } from '../models/User';
 import { ApprovalTemplate } from '../models/ApprovalTemplate';
-import { ApprovalTemplateStage } from '../models/ApprovalTemplateStage';
 import { AuthRequest } from '../middleware/auth';
 import { Response } from 'express';
 import { TaskStatus, ApprovalType } from '../types/enums';
@@ -11,9 +9,7 @@ import { ApproverStatus } from '../types/approval';
 
 const taskRepository = AppDataSource.getRepository(Task);
 const taskApproverRepository = AppDataSource.getRepository(TaskApprover);
-const userRepository = AppDataSource.getRepository(User);
 const approvalTemplateRepository = AppDataSource.getRepository(ApprovalTemplate);
-const approvalTemplateStageRepository = AppDataSource.getRepository(ApprovalTemplateStage);
 
 // Get approval bucket for current user
 export const getApprovalBucket = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -23,7 +19,7 @@ export const getApprovalBucket = async (req: AuthRequest, res: Response): Promis
     // Get tasks where user is an approver and status is pending
     const pendingApprovals = await taskApproverRepository.find({
       where: { 
-        userId: user.id,
+        approverUserId: user.id,
         status: ApproverStatus.PENDING
       },
       relations: ['task', 'task.creator', 'task.assignee', 'task.department']
@@ -32,7 +28,7 @@ export const getApprovalBucket = async (req: AuthRequest, res: Response): Promis
     // Get tasks that are in approval status and user is potential approver
     const tasksInApproval = await taskRepository.find({
       where: { 
-        status: TaskStatus.PENDING_APPROVAL,
+        status: TaskStatus.APPROVAL_PENDING,
         approvalType: ApprovalType.BACKWARD_360
       },
       relations: ['creator', 'assignee', 'department', 'approvers']
@@ -41,7 +37,7 @@ export const getApprovalBucket = async (req: AuthRequest, res: Response): Promis
     // Filter tasks where user might be involved in approval workflow
     const relevantTasks = tasksInApproval.filter(task => {
       // Check if user is already an approver
-      const isApprover = task.approvers.some(approver => approver.userId === user.id);
+      const isApprover = task.approvers.some(approver => approver.approverUserId === user.id);
       
       // For 360 approval, check if user is in the same department or has relevant role
       if (task.approvalType === ApprovalType.BACKWARD_360) {
@@ -89,8 +85,8 @@ export const getTaskApprovers = async (req: AuthRequest, res: Response): Promise
 
     const approvers = await taskApproverRepository.find({
       where: { taskId },
-      relations: ['user'],
-      order: { level: 'ASC' }
+      relations: ['approverUser'],
+      order: { levelOrder: 'ASC' }
     });
 
     res.json({ approvers });
@@ -124,7 +120,7 @@ export const approveTask = async (req: AuthRequest, res: Response): Promise<void
 
     // Find the approver record for this user
     const approver = await taskApproverRepository.findOne({
-      where: { taskId, userId: user.id, status: ApproverStatus.PENDING }
+      where: { taskId, approverUserId: user.id, status: ApproverStatus.PENDING }
     });
 
     if (!approver) {
@@ -134,8 +130,8 @@ export const approveTask = async (req: AuthRequest, res: Response): Promise<void
 
     // Update approver status
     approver.status = action === 'approve' ? ApproverStatus.APPROVED : ApproverStatus.REJECTED;
-    approver.comment = comment || '';
-    approver.approvedAt = new Date();
+    approver.comments = comment || '';
+    approver.actionAt = new Date();
     await taskApproverRepository.save(approver);
 
     // Check if all approvers have responded
@@ -200,17 +196,17 @@ export const submitForApproval = async (req: AuthRequest, res: Response): Promis
     let template = null;
     if (task.approvalTemplateId) {
       template = await approvalTemplateRepository.findOne({
-        where: { id: task.approvalTemplateId, active: true },
+        where: { id: task.approvalTemplateId, isActive: true },
         relations: ['stages']
       });
     } else {
       // Auto-select template based on task criteria
       const templates = await approvalTemplateRepository.find({
-        where: { active: true },
+        where: { isActive: true },
         relations: ['stages']
       });
 
-      template = templates.find(t => t.matchesCondition(task));
+      template = templates.find(t => t.matchesCondition(task.departmentId ?? '', task.amount ?? undefined));
     }
 
     if (!template || template.stages.length === 0) {
@@ -222,13 +218,19 @@ export const submitForApproval = async (req: AuthRequest, res: Response): Promis
     const approvers: TaskApprover[] = [];
     
     for (const stage of template.stages) {
-      const approverUserId = await stage.getApproverUserId(task);
+      const approverUserId = stage.getApproverUserId({
+        creatorId: task.creatorId,
+        assigneeId: task.assigneeId ?? undefined,
+        departmentId: task.departmentId ?? undefined,
+        hodId: undefined, // Would need to fetch from service
+        cfoId: undefined   // Would need to fetch from service
+      });
       
       if (approverUserId) {
         const approver = taskApproverRepository.create({
           taskId: task.id,
-          userId: approverUserId,
-          level: stage.level,
+          approverUserId: approverUserId,
+          levelOrder: stage.levelOrder,
           status: ApproverStatus.PENDING
         });
         approvers.push(approver);
@@ -244,7 +246,7 @@ export const submitForApproval = async (req: AuthRequest, res: Response): Promis
     await taskApproverRepository.save(approvers);
 
     // Update task status
-    task.status = TaskStatus.PENDING_APPROVAL;
+    task.status = TaskStatus.APPROVAL_PENDING;
     task.approvalTemplateId = template.id;
     await taskRepository.save(task);
 

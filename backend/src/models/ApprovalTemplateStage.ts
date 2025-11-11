@@ -25,8 +25,7 @@ export class ApprovalTemplateStage {
   levelOrder: number;
 
   @Column({
-    type: 'enum',
-    enum: ApproverType
+    type: 'text'
   })
   approverType: ApproverType;
 

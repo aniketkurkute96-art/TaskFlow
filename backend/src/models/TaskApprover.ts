@@ -26,8 +26,7 @@ export class TaskApprover {
   approverUser: User;
 
   @Column({
-    type: 'enum',
-    enum: ApproverStatus,
+    type: 'text',
     default: ApproverStatus.PENDING
   })
   status: ApproverStatus;

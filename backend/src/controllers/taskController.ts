@@ -1,46 +1,154 @@
-import { AppDataSource } from '../database';
-import { Task } from '../models/Task';
-import { User } from '../models/User';
-import { Department } from '../models/Department';
-import { AuthRequest } from '../middleware/auth';
 import { Response } from 'express';
-import { TaskStatus } from '../types/enums';
+import { AuthRequest } from '../middleware/auth';
+import prisma from '../database';
+import {
+  processTaskCompletion,
+  processApproval,
+  processRejection,
+} from '../services/approvalEngine';
 
-const taskRepository = AppDataSource.getRepository(Task);
-const userRepository = AppDataSource.getRepository(User);
-const departmentRepository = AppDataSource.getRepository(Department);
-
-// Get all tasks for the current user
-export const getUserTasks = async (req: AuthRequest, res: Response): Promise<void> => {
+export const createTask = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const user = req.user!;
-    
-    // Get tasks where user is creator or assignee
-    const tasks = await taskRepository.find({
-      where: [
-        { creatorId: user.id },
-        { assigneeId: user.id }
-      ],
-      relations: ['creator', 'assignee', 'department', 'approvalTemplate'],
-      order: { createdAt: 'DESC' }
+    const {
+      title,
+      description,
+      assigneeId,
+      assigneeType,
+      departmentId,
+      amount,
+      approvalType,
+      approvalTemplateId,
+      manualApprovers, // Array of { levelOrder: number, approverUserId: string }
+    } = req.body;
+
+    if (!title || !approvalType) {
+      res.status(400).json({ error: 'Title and approvalType are required' });
+      return;
+    }
+
+    if (!['360', 'specific', 'predefined'].includes(approvalType)) {
+      res.status(400).json({ error: 'Invalid approvalType. Must be 360, specific, or predefined' });
+      return;
+    }
+
+    // Create task
+    const task = await prisma.task.create({
+      data: {
+        title,
+        description,
+        creatorId: req.user!.userId,
+        assigneeId,
+        assigneeType,
+        departmentId,
+        amount: amount ? parseFloat(amount) : null,
+        approvalType,
+        approvalTemplateId: approvalType === 'predefined' ? approvalTemplateId : null,
+        status: 'open',
+      },
+      include: {
+        creator: { select: { id: true, name: true, email: true } },
+        assignee: { select: { id: true, name: true, email: true } },
+        department: true,
+        approvalTemplate: true,
+      },
     });
 
-    res.json({ tasks });
-  } catch (error) {
-    console.error('Get user tasks error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    // If specific approval type, create manual approvers
+    if (approvalType === 'specific' && manualApprovers && Array.isArray(manualApprovers)) {
+      for (const approver of manualApprovers) {
+        await prisma.taskApprover.create({
+          data: {
+            taskId: task.id,
+            levelOrder: approver.levelOrder,
+            approverUserId: approver.approverUserId,
+            status: 'pending',
+          },
+        });
+      }
+    }
+
+    res.status(201).json(task);
+  } catch (error: any) {
+    console.error('Create task error:', error);
+    res.status(500).json({ error: 'Failed to create task' });
   }
 };
 
-// Get task by ID
+export const getTasks = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { status, assigneeId, creatorId } = req.query;
+
+    const where: any = {};
+    if (status) where.status = status;
+    if (assigneeId) where.assigneeId = assigneeId;
+    if (creatorId) where.creatorId = creatorId;
+
+    const tasks = await prisma.task.findMany({
+      where,
+      include: {
+        creator: { select: { id: true, name: true, email: true } },
+        assignee: { select: { id: true, name: true, email: true } },
+        department: true,
+        _count: {
+          select: {
+            approvers: { where: { status: 'pending' } },
+            comments: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(tasks);
+  } catch (error: any) {
+    console.error('Get tasks error:', error);
+    res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+};
+
 export const getTaskById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const user = req.user!;
-    
-    const task = await taskRepository.findOne({
+
+    const task = await prisma.task.findUnique({
       where: { id },
-      relations: ['creator', 'assignee', 'department', 'approvalTemplate', 'nodes', 'approvers', 'comments', 'checklistItems', 'attachments']
+      include: {
+        creator: { select: { id: true, name: true, email: true } },
+        assignee: { select: { id: true, name: true, email: true } },
+        department: true,
+        approvalTemplate: { include: { stages: { orderBy: { levelOrder: 'asc' } } } },
+        nodes: {
+          include: {
+            fromUser: { select: { id: true, name: true, email: true } },
+            toUser: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { forwardedAt: 'asc' },
+        },
+        approvers: {
+          include: {
+            approver: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { levelOrder: 'asc' },
+        },
+        comments: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        attachments: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+        checklistItems: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
 
     if (!task) {
@@ -48,180 +156,301 @@ export const getTaskById = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
-    // Check if user has access to this task
-    if (task.creatorId !== user.id && task.assigneeId !== user.id && user.role !== 'admin') {
-      res.status(403).json({ error: 'Access denied' });
-      return;
-    }
-
-    res.json({ task });
-  } catch (error) {
-    console.error('Get task by ID error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.json(task);
+  } catch (error: any) {
+    console.error('Get task error:', error);
+    res.status(500).json({ error: 'Failed to fetch task' });
   }
 };
 
-// Create new task
-export const createTask = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const user = req.user!;
-    const { title, description, assigneeId, departmentId, amount, approvalType, dueDate, priority } = req.body;
-
-    // Validate required fields
-    if (!title) {
-      res.status(400).json({ error: 'Title is required' });
-      return;
-    }
-
-    // Validate assignee if provided
-    let assignee = null;
-    if (assigneeId) {
-      assignee = await userRepository.findOne({ where: { id: assigneeId } });
-      if (!assignee) {
-        res.status(400).json({ error: 'Invalid assignee ID' });
-        return;
-      }
-    }
-
-    // Validate department if provided
-    let department = null;
-    if (departmentId) {
-      department = await departmentRepository.findOne({ where: { id: departmentId } });
-      if (!department) {
-        res.status(400).json({ error: 'Invalid department ID' });
-        return;
-      }
-    }
-
-    // Create new task
-    const task = taskRepository.create({
-      title,
-      description: description || '',
-      creatorId: user.id,
-      assigneeId: assigneeId || null,
-      departmentId: departmentId || null,
-      amount: amount || null,
-      approvalType: approvalType || null,
-      dueDate: dueDate || null,
-      priority: priority || 'medium',
-      status: TaskStatus.DRAFT
-    });
-
-    await taskRepository.save(task);
-
-    // Reload with relations
-    const createdTask = await taskRepository.findOne({
-      where: { id: task.id },
-      relations: ['creator', 'assignee', 'department']
-    });
-
-    res.status(201).json({
-      message: 'Task created successfully',
-      task: createdTask
-    });
-  } catch (error) {
-    console.error('Create task error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
-
-// Update task
-export const updateTask = async (req: AuthRequest, res: Response): Promise<void> => {
+export const forwardTask = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const user = req.user!;
-    const { title, description, assigneeId, departmentId, amount, approvalType, dueDate, priority, status } = req.body;
+    const { toUserId } = req.body;
 
-    const task = await taskRepository.findOne({ where: { id } });
+    if (!toUserId) {
+      res.status(400).json({ error: 'toUserId is required' });
+      return;
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id },
+    });
+
     if (!task) {
       res.status(404).json({ error: 'Task not found' });
       return;
     }
 
-    // Check if user can update this task
-    if (task.creatorId !== user.id && user.role !== 'admin') {
-      res.status(403).json({ error: 'Access denied' });
+    // Check if user is current assignee or approver
+    const isAssignee = task.assigneeId === req.user!.userId;
+    const isApprover = await prisma.taskApprover.findFirst({
+      where: {
+        taskId: id,
+        approverUserId: req.user!.userId,
+        status: 'pending',
+      },
+    });
+
+    if (!isAssignee && !isApprover) {
+      res.status(403).json({ error: 'Only assignee or current approver can forward task' });
       return;
     }
 
-    // Validate assignee if provided
-    if (assigneeId !== undefined) {
-      if (assigneeId === null) {
-        task.assigneeId = null;
-      } else {
-        const assignee = await userRepository.findOne({ where: { id: assigneeId } });
-        if (!assignee) {
-          res.status(400).json({ error: 'Invalid assignee ID' });
-          return;
-        }
-        task.assigneeId = assigneeId;
-      }
+    // Create forward node
+    const node = await prisma.taskNode.create({
+      data: {
+        taskId: id,
+        fromUserId: req.user!.userId,
+        toUserId,
+      },
+      include: {
+        fromUser: { select: { id: true, name: true, email: true } },
+        toUser: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    // Update task assignee
+    await prisma.task.update({
+      where: { id },
+      data: {
+        assigneeId: toUserId,
+        status: task.status === 'open' ? 'in_progress' : task.status,
+      },
+    });
+
+    res.json(node);
+  } catch (error: any) {
+    console.error('Forward task error:', error);
+    res.status(500).json({ error: 'Failed to forward task' });
+  }
+};
+
+export const completeTask = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const task = await prisma.task.findUnique({
+      where: { id },
+    });
+
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
     }
 
-    // Validate department if provided
-    if (departmentId !== undefined) {
-      if (departmentId === null) {
-        task.departmentId = null;
-      } else {
-        const department = await departmentRepository.findOne({ where: { id: departmentId } });
-        if (!department) {
-          res.status(400).json({ error: 'Invalid department ID' });
-          return;
-        }
-        task.departmentId = departmentId;
-      }
+    // Check if user is assignee
+    if (task.assigneeId !== req.user!.userId) {
+      res.status(403).json({ error: 'Only assignee can complete task' });
+      return;
     }
 
-    // Update fields if provided
-    if (title !== undefined) task.title = title;
-    if (description !== undefined) task.description = description;
-    if (amount !== undefined) task.amount = amount;
-    if (approvalType !== undefined) task.approvalType = approvalType;
-    if (dueDate !== undefined) task.dueDate = dueDate;
-    if (priority !== undefined) task.priority = priority;
-    if (status !== undefined) task.status = status;
+    const result = await processTaskCompletion(id, req.user!.userId);
 
-    await taskRepository.save(task);
+    if (!result.success) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
 
-    // Reload with relations
-    const updatedTask = await taskRepository.findOne({
-      where: { id: task.id },
-      relations: ['creator', 'assignee', 'department']
+    const updatedTask = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        approvers: {
+          include: {
+            approver: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { levelOrder: 'asc' },
+        },
+      },
+    });
+
+    res.json({ task: updatedTask, approvers: result.approvers });
+  } catch (error: any) {
+    console.error('Complete task error:', error);
+    res.status(500).json({ error: 'Failed to complete task' });
+  }
+};
+
+export const approveTask = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const result = await processApproval(id, req.user!.userId);
+
+    if (!result.success) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        approvers: {
+          include: {
+            approver: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { levelOrder: 'asc' },
+        },
+      },
     });
 
     res.json({
-      message: 'Task updated successfully',
-      task: updatedTask
+      task,
+      isComplete: result.isComplete,
+      message: result.isComplete ? 'Task approved and completed' : 'Approval recorded',
     });
-  } catch (error) {
-    console.error('Update task error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  } catch (error: any) {
+    console.error('Approve task error:', error);
+    res.status(500).json({ error: 'Failed to approve task' });
   }
 };
 
-// Delete task
-export const deleteTask = async (req: AuthRequest, res: Response): Promise<void> => {
+export const rejectTask = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const user = req.user!;
+    const { forwardToUserId } = req.body;
 
-    const task = await taskRepository.findOne({ where: { id } });
+    const result = await processRejection(id, req.user!.userId, forwardToUserId);
+
+    if (!result.success) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id },
+      include: {
+        nodes: {
+          include: {
+            fromUser: { select: { id: true, name: true, email: true } },
+            toUser: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { forwardedAt: 'desc' },
+        },
+      },
+    });
+
+    res.json({
+      task,
+      message: 'Task rejected and forwarded back',
+    });
+  } catch (error: any) {
+    console.error('Reject task error:', error);
+    res.status(500).json({ error: 'Failed to reject task' });
+  }
+};
+
+export const updateTaskStatus = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      res.status(400).json({ error: 'Status is required' });
+      return;
+    }
+
+    // Validate status
+    const allowedStatuses = ['open', 'in_progress', 'rejected'];
+    if (!allowedStatuses.includes(status)) {
+      res.status(400).json({ error: 'Invalid status. Allowed: open, in_progress, rejected' });
+      return;
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id },
+    });
+
     if (!task) {
       res.status(404).json({ error: 'Task not found' });
       return;
     }
 
-    // Check if user can delete this task
-    if (task.creatorId !== user.id && user.role !== 'admin') {
-      res.status(403).json({ error: 'Access denied' });
+    // Check if user is assignee
+    if (task.assigneeId !== req.user!.userId) {
+      res.status(403).json({ error: 'Only assignee can update task status' });
       return;
     }
 
-    await taskRepository.remove(task);
+    // Don't allow status change if task is already completed or in approval
+    if (['pending_approval', 'approved'].includes(task.status)) {
+      res.status(400).json({ error: 'Cannot change status of task in approval or completed' });
+      return;
+    }
 
-    res.json({ message: 'Task deleted successfully' });
-  } catch (error) {
-    console.error('Delete task error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    const updatedTask = await prisma.task.update({
+      where: { id },
+      data: { status },
+      include: {
+        creator: { select: { id: true, name: true, email: true } },
+        assignee: { select: { id: true, name: true, email: true } },
+        department: true,
+      },
+    });
+
+    res.json(updatedTask);
+  } catch (error: any) {
+    console.error('Update task status error:', error);
+    res.status(500).json({ error: 'Failed to update task status' });
+  }
+};
+
+export const getApprovalBucket = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const pendingApprovals = await prisma.taskApprover.findMany({
+      where: {
+        approverUserId: req.user!.userId,
+        status: 'pending',
+      },
+      include: {
+        task: {
+          include: {
+            creator: { select: { id: true, name: true, email: true } },
+            assignee: { select: { id: true, name: true, email: true } },
+            department: true,
+            _count: {
+              select: {
+                approvers: true,
+                comments: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { task: { createdAt: 'desc' } },
+    });
+
+    res.json(pendingApprovals);
+  } catch (error: any) {
+    console.error('Get approval bucket error:', error);
+    res.status(500).json({ error: 'Failed to fetch approval bucket' });
+  }
+};
+
+export const addComment = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body;
+
+    if (!content) {
+      res.status(400).json({ error: 'Content is required' });
+      return;
+    }
+
+    const comment = await prisma.comment.create({
+      data: {
+        taskId: id,
+        userId: req.user!.userId,
+        content,
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    res.status(201).json(comment);
+  } catch (error: any) {
+    console.error('Add comment error:', error);
+    res.status(500).json({ error: 'Failed to add comment' });
   }
 };
